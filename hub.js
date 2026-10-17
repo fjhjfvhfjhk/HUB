@@ -1,14 +1,27 @@
 /* ============================================================================
-   ХАБ ПРОЕКТОВ · hub.js
-   Загружает projects.json, рендерит карточки, обрабатывает поиск,
-   фильтры, избранное, историю и запуск в модалке-iframe.
+   ХАБ ПРОЕКТОВ · hub.js · v2026-10-17-2
+   
+   Изменения в этой версии:
+     • Автоматический cache-busting для iframe.
+       Перед открытием проекта выполняется HEAD-запрос к index.html.
+       Из ответа берётся Last-Modified (или ETag как fallback).
+       URL iframe становится projects/<id>/?v=<version>.
+       После обновления проекта на сервере — Last-Modified меняется →
+       URL меняется → браузер скачивает свежий HTML. Без ручных bump-ов.
+     • Одноразовая очистка устаревших Service Worker из /projects/*
+       и кэшей lux7-* (для тех, у кого ещё закеширован старый ЛЮКС-7).
    ============================================================================ */
 (function () {
   'use strict';
 
+  /* ---------------- Версия хаба ----------------
+     Меняй при каждом релизе хаба, если нужен новый сброс кэшей у игроков. */
+  const HUB_VERSION = '2026-10-17-2';
+
   /* ---------------- Константы ---------------- */
   const STORAGE_FAV    = 'hub_favorites_v1';
   const STORAGE_RECENT = 'hub_recent_v1';
+  const CLEAN_KEY      = 'hub_cleaned_' + HUB_VERSION;
   const RECENT_MAX     = 12;
 
   /* ---------------- DOM ---------------- */
@@ -36,7 +49,7 @@
   let allProjects = [];
   let favorites   = loadSet(STORAGE_FAV);
   let recent      = loadArray(STORAGE_RECENT);
-  let activeView  = 'all';  // all | favorites | recent
+  let activeView  = 'all';
   let activeTag   = 'all';
   let query       = '';
   let openProject = null;
@@ -71,13 +84,11 @@
   }
   function pickIconHtml(icon) {
     if (!icon) return '<span>◈</span>';
-    // Если содержит "<" — считаем, что это готовый SVG/HTML
     if (typeof icon === 'string' && icon.trim().startsWith('<')) return icon;
     return `<span>${escapeHtml(icon)}</span>`;
   }
   function safePath(p) {
     if (!p) return '';
-    // Убираем ведущий слэш, чтобы ссылка была относительной
     let path = String(p).replace(/^\/+/, '');
     if (!path.endsWith('/') && !path.endsWith('.html')) path += '/';
     return path;
@@ -102,8 +113,73 @@
     return `rgba(${r},${g},${b},${a})`;
   }
 
+  /* ---------------- Cache-busting версия проекта ----------------
+     Делает HEAD-запрос к index.html проекта.
+     Берёт Last-Modified (или ETag если нет LM). Это и есть версия.
+     Если HEAD упал — fallback на projects.json (version / added). */
+  async function getProjectVersion(proj) {
+    try {
+      const url = safePath(proj.path) + 'index.html';
+      const res = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      if (res && res.ok) {
+        const lm = res.headers.get('last-modified');
+        if (lm) {
+          const ts = new Date(lm).getTime();
+          if (!isNaN(ts) && ts > 0) return 'lm' + ts;
+        }
+        const etag = res.headers.get('etag');
+        if (etag) return 'et' + etag.replace(/[^a-z0-9]/gi, '').slice(0, 20);
+      }
+    } catch (e) { /* сеть упала — используем fallback */ }
+    // Fallback: статичное поле из projects.json
+    const v = proj.version || proj.added || '1';
+    return 'fb' + String(v).replace(/[^a-z0-9]/gi, '');
+  }
+
+  /* ---------------- Очистка устаревших Service Worker ----------------
+     При первом заходе после деплоя новой HUB_VERSION:
+       1) снимаем регистрацию SW со scope внутри /projects/
+       2) удаляем кэши с префиксом lux7-
+     Фикс «обновил игру — а в браузере старая версия». */
+  async function cleanupStaleGameCaches() {
+    if (!('serviceWorker' in navigator)) return;
+    try { if (localStorage.getItem(CLEAN_KEY) === '1') return; } catch (e) {}
+
+    let unregistered = 0;
+    let cleared = 0;
+
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) {
+        try {
+          if (reg.scope && reg.scope.indexOf('/projects/') !== -1) {
+            await reg.unregister();
+            unregistered++;
+          }
+        } catch (e) {}
+      }
+    } catch (e) {}
+
+    try {
+      if (window.caches && caches.keys) {
+        const keys = await caches.keys();
+        for (const k of keys) {
+          if (k.indexOf('lux7-') === 0) {
+            try { await caches.delete(k); cleared++; } catch (e) {}
+          }
+        }
+      }
+    } catch (e) {}
+
+    try { localStorage.setItem(CLEAN_KEY, '1'); } catch (e) {}
+    if (unregistered || cleared) {
+      console.log('[hub] cleanup: SW=' + unregistered + ' caches=' + cleared);
+    }
+  }
+
   /* ---------------- Инициализация ---------------- */
   function init() {
+    cleanupStaleGameCaches();
     updateStats();
     bindEvents();
     bindHashChange();
@@ -112,13 +188,11 @@
 
   /* ---------------- События ---------------- */
   function bindEvents() {
-    // Поиск
     searchInp.addEventListener('input', () => {
       query = searchInp.value.trim().toLowerCase();
       render();
     });
 
-    // Виды (все / избранное / недавние)
     $$('.hub-nav__btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         activeView = btn.dataset.view;
@@ -127,7 +201,6 @@
       });
     });
 
-    // Теги — делегирование
     tagbar.addEventListener('click', (e) => {
       const chip = e.target.closest('.tag-chip');
       if (!chip) return;
@@ -136,7 +209,6 @@
       render();
     });
 
-    // Карточки — делегирование (клик по кнопке / избранному)
     grid.addEventListener('click', (e) => {
       const favBtn = e.target.closest('.card__fav');
       if (favBtn) {
@@ -159,7 +231,6 @@
       }
     });
 
-    // Мышь — свечение по курсору
     grid.addEventListener('mousemove', (e) => {
       const card = e.target.closest('.card');
       if (!card) return;
@@ -168,19 +239,16 @@
       card.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100) + '%');
     });
 
-    // Модалка — закрытие
     modal.addEventListener('click', (e) => {
       if (e.target.closest('[data-close]')) closeProjectModal();
     });
 
-    // Esc + "/" — горячие клавиши
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !modal.hidden) { closeProjectModal(); return; }
       if (e.key === '/' && document.activeElement !== searchInp) {
         e.preventDefault();
         searchInp.focus();
       }
-      // 1..9 — открыть проект по счёту в текущем виде
       if (/^[1-9]$/.test(e.key) && modal.hidden && document.activeElement !== searchInp) {
         const list = getVisibleProjects();
         const p = list[parseInt(e.key, 10) - 1];
@@ -188,7 +256,6 @@
       }
     });
 
-    // Сброс данных
     if (resetBtn) {
       resetBtn.addEventListener('click', () => {
         if (!confirm('Сбросить избранное и историю посещений?')) return;
@@ -202,7 +269,6 @@
       });
     }
 
-    // Обновляем избранное/недавние между вкладками
     window.addEventListener('storage', (e) => {
       if (e.key === STORAGE_FAV) {
         favorites = loadSet(STORAGE_FAV);
@@ -246,7 +312,6 @@
       updateStats();
       render();
 
-      // Прямая ссылка через hash
       const m = location.hash.match(/^#project=(.+)$/);
       if (m) {
         const proj = allProjects.find((p) => p.id === m[1]);
@@ -273,14 +338,12 @@
     const tagSet = new Set();
     allProjects.forEach((p) => (p.tags || []).forEach((t) => tagSet.add(t)));
 
-    // Сохраняем существующий "all" и убираем остальные
     const html = ['<button class="tag-chip is-active" data-tag="all">Все</button>'];
     Array.from(tagSet).sort().forEach((t) => {
       html.push(`<button class="tag-chip" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</button>`);
     });
     tagbar.innerHTML = html.join('');
 
-    // Если активный тег исчез — сбрасываем
     if (activeTag !== 'all' && !tagSet.has(activeTag)) {
       activeTag = 'all';
       $$('.tag-chip').forEach((c) => c.classList.toggle('is-active', c.dataset.tag === 'all'));
@@ -289,19 +352,15 @@
 
   /* ---------------- Фильтрация ---------------- */
   function getVisibleProjects() {
-    const favArr = Array.from(favorites);
     return allProjects.filter((p) => {
-      // Вид
       if (activeView === 'favorites' && !favorites.has(p.id)) return false;
       if (activeView === 'recent' && !recent.includes(p.id)) return false;
 
-      // Тег
       if (activeTag !== 'all') {
         const tags = p.tags || [];
         if (!tags.includes(activeTag)) return false;
       }
 
-      // Поиск
       if (query) {
         const hay = [
           p.name, p.desc || '', p.description || '',
@@ -311,11 +370,9 @@
       }
       return true;
     }).sort((a, b) => {
-      // В "недавних" — по индексу в recent (новые сверху)
       if (activeView === 'recent') {
         return recent.indexOf(a.id) - recent.indexOf(b.id);
       }
-      // Иначе — по дате добавления
       return (b.added || '').localeCompare(a.added || '');
     });
   }
@@ -396,19 +453,27 @@
   }
 
   /* ---------------- Модалка ---------------- */
-  function openProjectModal(proj, opts) {
+  async function openProjectModal(proj, opts) {
     opts = opts || {};
     if (!proj) return;
     openProject = proj;
 
-    const url = safePath(proj.path);
-    modalFrame.src = url;
+    // Сначала показываем модалку, чтобы не было ощущения зависания
     modalIcon.innerHTML = pickIconHtml(proj.icon);
     modalTitle.textContent = proj.name;
-    modalExt.href = url;
     modal.hidden = false;
     document.body.style.overflow = 'hidden';
     markRecent(proj.id);
+
+    // Cache-busting версия: HEAD → Last-Modified
+    const version = await getProjectVersion(proj);
+
+    // Проверяем, что пользователь не закрыл модалку, пока шёл запрос
+    if (modal.hidden || openProject !== proj) return;
+
+    const url = safePath(proj.path) + '?v=' + encodeURIComponent(version);
+    modalFrame.src = url;
+    modalExt.href = url;
 
     if (opts.updateHash !== false) {
       try { history.replaceState(null, '', '#project=' + proj.id); } catch (e) {}
@@ -428,7 +493,6 @@
         history.replaceState(null, '', url);
       } catch (e) {}
     }
-    // Вернуть фокус в поиск не нужно — пусть пользователь сам выбирает
   }
 
   /* ---------------- Старт ---------------- */
