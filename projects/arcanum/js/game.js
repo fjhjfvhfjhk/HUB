@@ -1,5 +1,5 @@
 /* ============================================================
-   GAME — классы магов, метеор, кровавая луна, fullscreen
+   GAME v5.1 — оптимизация под Кровавую Луну
    ============================================================ */
 
 var Game = {
@@ -24,6 +24,7 @@ var Game = {
   mageClass: null,
   bloodMoonActive: false,
   bloodMoonScoreMul: 1,
+  performanceMode: false,
   meta: { souls: 0, totalSouls: 0, stats: {}, spells: {} },
   spatialGrid: null,
   frameTimes: [],
@@ -35,6 +36,8 @@ var Game = {
   maxDamageTexts: 40,
   maxEnemies: 30,
   vignetteCanvas: null,
+  _bloodMoonCanvas: null,
+  _hurtFlashCanvas: null,
 
   init: function () {
     this.canvas = document.getElementById('game');
@@ -54,7 +57,6 @@ var Game = {
     if (bestEl) bestEl.textContent = Utils.formatNum(this.best);
     this.updateSoulsDisplay();
 
-    // загрузка последнего класса
     var savedClass = Storage.get('arcanum_class', 'classic');
     this.mageClass = (savedClass && savedClass !== 'classic') ? savedClass : null;
 
@@ -110,25 +112,76 @@ var Game = {
     this.canvas.style.height = this.H + 'px';
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.generateStars();
-    this.buildVignette();
+    this.buildUiCaches();
   },
 
-  buildVignette: function () {
+  buildUiCaches: function () {
     var W = this.W, H = this.H;
-    var c = document.createElement('canvas');
-    c.width = W;
-    c.height = H;
-    var cx = c.getContext('2d');
+
+    // Vignette
+    var vc = document.createElement('canvas');
+    vc.width = W; vc.height = H;
+    var vctx = vc.getContext('2d');
     var cx0 = W / 2, cy0 = H / 2;
     var innerR = Math.min(W, H) * 0.28;
     var outerR = Math.max(W, H) * 0.78;
-    var g = cx.createRadialGradient(cx0, cy0, innerR, cx0, cy0, outerR);
-    g.addColorStop(0, 'rgba(0,0,0,0)');
-    g.addColorStop(0.55, 'rgba(10,5,25,0.18)');
-    g.addColorStop(1, 'rgba(0,0,0,0.55)');
-    cx.fillStyle = g;
-    cx.fillRect(0, 0, W, H);
-    this.vignetteCanvas = c;
+    var vg = vctx.createRadialGradient(cx0, cy0, innerR, cx0, cy0, outerR);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(0.55, 'rgba(10,5,25,0.18)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.55)');
+    vctx.fillStyle = vg;
+    vctx.fillRect(0, 0, W, H);
+    this.vignetteCanvas = vc;
+
+    // Blood moon overlay + moon sprite — ОДИН canvas, один drawImage
+    var bmc = document.createElement('canvas');
+    bmc.width = W; bmc.height = H;
+    var bctx = bmc.getContext('2d');
+
+    var bg = bctx.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, Math.max(W, H) * 0.75);
+    bg.addColorStop(0, 'rgba(180,20,20,0)');
+    bg.addColorStop(0.6, 'rgba(180,20,20,0.08)');
+    bg.addColorStop(1, 'rgba(120,10,10,0.36)');
+    bctx.fillStyle = bg;
+    bctx.fillRect(0, 0, W, H);
+
+    // Moon in top-right
+    var mx = W - 70, my = 100;
+    bctx.globalAlpha = 0.75;
+    var moonG = bctx.createRadialGradient(mx, my, 0, mx, my, 40);
+    moonG.addColorStop(0, '#ff3333');
+    moonG.addColorStop(0.6, '#8a1010');
+    moonG.addColorStop(1, 'rgba(120,10,10,0)');
+    bctx.fillStyle = moonG;
+    bctx.beginPath();
+    bctx.arc(mx, my, 40, 0, 6.2832);
+    bctx.fill();
+    bctx.globalAlpha = 0.6;
+    bctx.fillStyle = '#a01c1c';
+    bctx.beginPath();
+    bctx.arc(mx, my, 22, 0, 6.2832);
+    bctx.fill();
+    bctx.globalAlpha = 0.4;
+    bctx.fillStyle = '#5a0808';
+    bctx.beginPath();
+    bctx.arc(mx - 6, my - 4, 4, 0, 6.2832);
+    bctx.arc(mx + 7, my + 3, 3, 0, 6.2832);
+    bctx.arc(mx - 2, my + 8, 2.5, 0, 6.2832);
+    bctx.fill();
+    bctx.globalAlpha = 1;
+
+    this._bloodMoonCanvas = bmc;
+
+    // Hurt flash gradient (кеш)
+    var hc = document.createElement('canvas');
+    hc.width = W; hc.height = H;
+    var hctx = hc.getContext('2d');
+    var hg = hctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.72);
+    hg.addColorStop(0, 'rgba(255,60,80,0)');
+    hg.addColorStop(1, 'rgba(255,60,80,0.4)');
+    hctx.fillStyle = hg;
+    hctx.fillRect(0, 0, W, H);
+    this._hurtFlashCanvas = hc;
   },
 
   generateBgRunes: function () {
@@ -521,6 +574,7 @@ var Game = {
     this.bossActive = null;
     this.bloodMoonActive = false;
     this.bloodMoonScoreMul = 1;
+    this.performanceMode = false;
     this.lowQuality = false;
     this._qualityCooldown = 0;
     this.frameTimes = [];
@@ -565,16 +619,16 @@ var Game = {
     this.wave++;
     this.waveActive = true;
 
-    // Кровавая луна — шанс на обычных волнах начиная с 4-й
+    // Кровавая луна — шанс на обычных волнах с 4-й
     if (this.wave >= 4 && this.wave % 5 !== 0) {
       if (Math.random() < 0.25) {
         this.bloodMoonActive = true;
-        this.bloodMoonScoreMul = 3;
-        this.screenFlash = 0.5;
-        this.screenFlashColor = 'rgba(200,20,20,0.55)';
+        this.bloodMoonScoreMul = 4; // +1 за меньшую сложность
+        this.screenFlash = 0.4;
+        this.screenFlashColor = 'rgba(200,20,20,0.5)';
         Utils.vibrate(200);
         Audio2.bossAppear();
-        this.shake(15);
+        this.shake(12);
       } else {
         this.bloodMoonActive = false;
         this.bloodMoonScoreMul = 1;
@@ -583,6 +637,9 @@ var Game = {
       this.bloodMoonActive = false;
       this.bloodMoonScoreMul = 1;
     }
+
+    // Обновляем performanceMode сразу после установки флага
+    this.performanceMode = this.lowQuality || this.bloodMoonActive;
 
     if (this.wave % 5 === 0) {
       this.spawnQueue = ['imp', 'imp'];
@@ -613,6 +670,10 @@ var Game = {
     }
   },
 
+  getMaxEnemiesForCurrentWave: function () {
+    return this.bloodMoonActive ? 22 : this.maxEnemies;
+  },
+
   buildWave: function (wave) {
     var list = [];
     var budget = Math.min(4 + wave * 1.5, 24);
@@ -629,7 +690,8 @@ var Game = {
     }
     var minCount = Math.min(4 + Math.floor(wave * 0.5), 20);
     while (list.length < minCount) list.push('imp');
-    while (list.length > this.maxEnemies) list.pop();
+    var cap = this.getMaxEnemiesForCurrentWave();
+    while (list.length > cap) list.pop();
     Utils.shuffle(list);
     return list;
   },
@@ -646,12 +708,13 @@ var Game = {
     var isElite = Math.random() < eliteChance;
     var enemy = new Enemy(x, y, type, this.wave, isElite);
     if (this.bloodMoonActive) {
-      enemy.maxHp = Math.round(enemy.maxHp * 1.5);
+      // мягче, чем было (1.5 → 1.3 HP, 1.25 → 1.15 урон), зато очки x4
+      enemy.maxHp = Math.round(enemy.maxHp * 1.3);
       enemy.hp = enemy.maxHp;
-      enemy.damage *= 1.25;
+      enemy.damage *= 1.15;
     }
     this.enemies.push(enemy);
-    if (!this.lowQuality) {
+    if (!this.performanceMode) {
       this.particles.push(new RingParticle(x, y, isElite ? 60 : 40, 0.4, isElite ? '#ffc857' : ENEMY_TYPES[type].color, isElite ? 3 : 2));
       var spCount = isElite ? 10 : 6;
       for (var i = 0; i < spCount; i++) {
@@ -670,8 +733,9 @@ var Game = {
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0) {
         var count = Math.min(this.spawnQueue.length, 2);
+        var cap = this.getMaxEnemiesForCurrentWave() + 5;
         for (var i = 0; i < count; i++) {
-          if (this.enemies.length >= this.maxEnemies + 5) break;
+          if (this.enemies.length >= cap) break;
           this.spawnEnemy(this.spawnQueue.shift());
         }
         this.spawnTimer = Math.max(0.35, 0.85 - this.wave * 0.01);
@@ -755,7 +819,7 @@ var Game = {
     choice.def.apply(this.player, actualValue);
 
     var p = this.player;
-    var particleCount = this.lowQuality ? 10 : 20;
+    var particleCount = this.performanceMode ? 8 : 20;
     for (var i = 0; i < particleCount; i++) {
       var a = Math.random() * 6.2832;
       var s = 80 + Math.random() * 140;
@@ -804,11 +868,11 @@ var Game = {
     Audio2.castNova();
     var radius = 175;
     var dmg = 34 * p.damageMul * (1 + (p.metaNovaDmg || 0));
-    if (!this.lowQuality) {
+    if (!this.performanceMode) {
       this.particles.push(new RingParticle(p.x, p.y, radius, 0.7, '#7fdcff', 5));
       this.particles.push(new RingParticle(p.x, p.y, radius * 0.75, 0.5, '#b7ecff', 3));
     }
-    var count = this.lowQuality ? 12 : 30;
+    var count = this.performanceMode ? 10 : 30;
     for (var i = 0; i < count; i++) {
       var a = (i / count) * 6.2832;
       var s = 160 + Math.random() * 140;
@@ -850,7 +914,7 @@ var Game = {
       this.lockTarget = target;
       this.lockTimer = 0.55;
       Audio2.lock();
-      if (!this.lowQuality) {
+      if (!this.performanceMode) {
         this.particles.push(new RingParticle(target.x, target.y, target.radius + 22, 0.35, '#ff9a3c', 2));
       }
     }
@@ -862,7 +926,7 @@ var Game = {
     pr.target = target;
     pr.homing = target ? (7 + (p.metaFireHoming || 0)) : 0;
     this.projectiles.push(pr);
-    if (!this.lowQuality) {
+    if (!this.performanceMode) {
       for (var k = 0; k < 8; k++) {
         var a2 = fireAngle + (Math.random() - 0.5);
         var s2 = 60 + Math.random() * 120;
@@ -909,7 +973,7 @@ var Game = {
       current = { x: best.x, y: best.y };
     }
 
-    if (!this.lowQuality) {
+    if (!this.performanceMode) {
       for (var ii = 0; ii < points.length - 1; ii++) {
         var a = points[ii], b = points[ii + 1];
         for (var seg = 0; seg < 8; seg++) {
@@ -950,8 +1014,7 @@ var Game = {
       dead: false
     };
     this.meteors.push(meteor);
-    // предупреждение на земле
-    if (!this.lowQuality) {
+    if (!this.performanceMode) {
       this.particles.push(new RingParticle(tx, ty, 30, 0.5, '#ff9a3c', 2));
     }
     Utils.vibrate(30);
@@ -965,7 +1028,6 @@ var Game = {
       mt.delay -= dt;
       if (!mt.impacted && mt.delay <= 0) {
         mt.impacted = true;
-        // AoE урон
         for (var i = 0; i < this.enemies.length; i++) {
           var e = this.enemies[i];
           if (e.dead) continue;
@@ -981,12 +1043,11 @@ var Game = {
             if (e.dead) this.onEnemyDeath(e);
           }
         }
-        // мощные эффекты
         this.shake(20);
         this.screenFlash = 0.4;
         this.screenFlashColor = 'rgba(255,140,50,0.55)';
         Utils.vibrate(120);
-        if (!this.lowQuality) {
+        if (!this.performanceMode) {
           this.particles.push(new RingParticle(mt.x, mt.y, mt.radius, 0.7, '#ff9a3c', 6));
           this.particles.push(new RingParticle(mt.x, mt.y, mt.radius * 1.3, 1.0, 'rgba(255,180,80,0.4)', 4));
           this.particles.push(new RingParticle(mt.x, mt.y, mt.radius * 0.7, 0.45, '#ffffff', 3));
@@ -1034,7 +1095,7 @@ var Game = {
       }));
     }
     p.castFlash = 0.08;
-    if (!this.lowQuality) {
+    if (!this.performanceMode) {
       for (var j = 0; j < 3; j++) {
         var aa = baseAngle + (Math.random() - 0.5) * 0.8;
         var ss = 60 + Math.random() * 70;
@@ -1049,15 +1110,22 @@ var Game = {
     var p = this.player;
     if (!p) return;
 
+    // Обновляем performanceMode КАЖДЫЙ кадр — это критично для Blood Moon
+    this.performanceMode = this.lowQuality || this.bloodMoonActive;
+
+    // Лимиты под режим производительности
+    var effMaxParticles = this.performanceMode ? 140 : 320;
+    var effMaxDamageTexts = this.performanceMode ? 20 : 40;
+
     var mv = this.readMovement();
     p.update(dt, mv.x, mv.y);
     this.updateBasicAttack(dt);
 
-    if (!this.lowQuality && (Math.abs(p.vx) > 20 || Math.abs(p.vy) > 20)) {
+    if (!this.performanceMode && (Math.abs(p.vx) > 20 || Math.abs(p.vy) > 20)) {
       this._playerTrailTimer -= dt;
       if (this._playerTrailTimer <= 0) {
         this._playerTrailTimer = 0.06;
-        if (this.particles.length < this.maxParticles) {
+        if (this.particles.length < effMaxParticles) {
           this.particles.push(new Particle(
             p.x + (Math.random() - 0.5) * 16,
             p.y + 4 + Math.random() * 8,
@@ -1074,10 +1142,9 @@ var Game = {
       if (this.comboTimer <= 0) this.comboCount = 0;
     }
 
-    // метеоры
     this.updateMeteors(dt);
 
-    // враги
+    // Враги
     for (var i = this.enemies.length - 1; i >= 0; i--) {
       var e = this.enemies[i];
       if (e.dead) {
@@ -1119,13 +1186,13 @@ var Game = {
 
     this.spatialGrid.rebuild(this.enemies);
 
-    // снаряды игрока
+    // Снаряды игрока
     for (var j = this.projectiles.length - 1; j >= 0; j--) {
       var pr = this.projectiles[j];
       pr.update(dt);
       if (pr.dead) { this.projectiles.splice(j, 1); continue; }
 
-      if (!this.lowQuality && this.particles.length < this.maxParticles) {
+      if (!this.performanceMode && this.particles.length < effMaxParticles) {
         pr._trailTimer -= dt;
         if (pr._trailTimer <= 0) {
           pr._trailTimer = 0.04;
@@ -1156,7 +1223,7 @@ var Game = {
           this.spawnDamageText(en.x, en.y - en.radius, dmg, isCrit, pr.color);
           this.applyLifesteal(dmg);
           Audio2.enemyHit();
-          if (!this.lowQuality) {
+          if (!this.performanceMode) {
             this.particles.push(new RingParticle(pr.x, pr.y, 28, 0.22, pr.color, 2));
             if (isCrit) {
               this.particles.push(new RingParticle(pr.x, pr.y, 50, 0.3, '#ffc857', 3));
@@ -1165,7 +1232,7 @@ var Game = {
               Utils.vibrate(30);
             }
             for (var q2 = 0; q2 < 4; q2++) {
-              if (this.particles.length >= this.maxParticles) break;
+              if (this.particles.length >= effMaxParticles) break;
               var spa = Math.random() * 6.2832;
               var sps = 50 + Math.random() * 100;
               this.particles.push(new Particle(pr.x, pr.y,
@@ -1180,7 +1247,7 @@ var Game = {
       }
     }
 
-    // вражеские снаряды
+    // Вражеские снаряды
     for (var ep = this.enemyProjectiles.length - 1; ep >= 0; ep--) {
       var epr = this.enemyProjectiles[ep];
       epr.update(dt);
@@ -1192,13 +1259,13 @@ var Game = {
         Utils.vibrate(40);
         this.shake(5);
         this.spawnDamageText(p.x, p.y - p.radius - 6, dmgTaken, false, '#ff3355');
-        if (!this.lowQuality) this.particles.push(new RingParticle(epr.x, epr.y, 28, 0.25, '#ff3355', 2));
+        if (!this.performanceMode) this.particles.push(new RingParticle(epr.x, epr.y, 28, 0.25, '#ff3355', 2));
         epr.dead = true;
         if (p.dead) { this.gameOver(); return; }
       }
     }
 
-    // пикапы
+    // Пикапы
     for (var m = this.pickups.length - 1; m >= 0; m--) {
       var pk = this.pickups[m];
       var collected = pk.update(dt, p);
@@ -1210,7 +1277,7 @@ var Game = {
           var lv = p.addXp(pk.value);
           if (lv > 0) {
             p.maxHp += 6; p.heal(12);
-            if (!this.lowQuality) {
+            if (!this.performanceMode) {
               this.particles.push(new RingParticle(p.x, p.y, 110, 0.5, '#ffc857', 3));
             }
             this.screenFlash = 0.06;
@@ -1220,17 +1287,17 @@ var Game = {
       }
     }
 
-    // частицы
+    // Частицы
     for (var n2 = this.particles.length - 1; n2 >= 0; n2--) {
       var pt = this.particles[n2];
       pt.update(dt);
       if (pt.dead) this.particles.splice(n2, 1);
     }
-    if (this.particles.length > this.maxParticles) {
-      this.particles.splice(0, this.particles.length - this.maxParticles);
+    if (this.particles.length > effMaxParticles) {
+      this.particles.splice(0, this.particles.length - effMaxParticles);
     }
 
-    // текст урона
+    // Текст урона
     for (var o = this.damageTexts.length - 1; o >= 0; o--) {
       var txt = this.damageTexts[o];
       txt.life -= dt;
@@ -1240,8 +1307,8 @@ var Game = {
       txt.vx *= Math.pow(0.92, dt * 60);
       if (txt.life <= 0) this.damageTexts.splice(o, 1);
     }
-    if (this.damageTexts.length > this.maxDamageTexts) {
-      this.damageTexts.splice(0, this.damageTexts.length - this.maxDamageTexts);
+    if (this.damageTexts.length > effMaxDamageTexts) {
+      this.damageTexts.splice(0, this.damageTexts.length - effMaxDamageTexts);
     }
 
     this.updateWaves(dt);
@@ -1261,7 +1328,7 @@ var Game = {
   getBossDrops: function (boss) {
     var drops = [];
     var lvl = boss.bossLevel;
-    var mul = this.bloodMoonActive ? 3 : 1;
+    var mul = this.bloodMoonActive ? 2 : 1;
     drops.push(new Pickup(boss.x, boss.y, 'hp', 40 + lvl * 10));
     drops.push(new Pickup(boss.x + 20, boss.y, 'mana', 40 + lvl * 10));
     if (boss.bossType === 'titan') {
@@ -1277,7 +1344,6 @@ var Game = {
     } else {
       for (var d = 0; d < 3; d++) drops.push(new Pickup(boss.x + d * 14 - 14, boss.y + 10, 'xp', 30));
     }
-    // кровавая луна — дублируем
     if (mul > 1) {
       var extra = [];
       for (var e = 0; e < drops.length; e++) {
@@ -1299,13 +1365,13 @@ var Game = {
     this.comboTimer = 2.5;
     if (this.comboCount > 0 && this.comboCount % 5 === 0) {
       this.score += 15;
-      if (!this.lowQuality) this.particles.push(new RingParticle(e.x, e.y, 70, 0.4, '#ffc857', 3));
+      if (!this.performanceMode) this.particles.push(new RingParticle(e.x, e.y, 70, 0.4, '#ffc857', 3));
     }
 
-    if (!this.lowQuality) {
+    if (!this.performanceMode) {
       var n = Math.min(e.isElite ? 24 : 18, 8 + Math.floor(e.radius * 0.5));
       for (var i = 0; i < n; i++) {
-        if (this.particles.length >= this.maxParticles) break;
+        if (this.particles.length >= 140) break;
         var a = Math.random() * 6.2832;
         var s = 70 + Math.random() * 180;
         var col = e.isElite ? (i % 2 === 0 ? '#ffc857' : '#fff') : (i % 3 === 0 ? '#ffffff' : e.base.color);
@@ -1331,14 +1397,14 @@ var Game = {
       else if (roll < 0.80) this.pickups.push(new Pickup(e.x, e.y, 'xp', e.xp));
     }
     if (e.type === 'brute' && !e.isElite) this.pickups.push(new Pickup(e.x + 14, e.y, 'xp', e.xp));
-    // кровавая луна — доп дроп
     if (this.bloodMoonActive && Math.random() < 0.5) {
       this.pickups.push(new Pickup(e.x + (Math.random() - 0.5) * 30, e.y + (Math.random() - 0.5) * 30, 'xp', Math.round(e.xp * 0.7)));
     }
   },
 
   spawnDamageText: function (x, y, val, crit, color) {
-    if (this.damageTexts.length >= this.maxDamageTexts) return;
+    var maxDT = this.performanceMode ? 20 : 40;
+    if (this.damageTexts.length >= maxDT) return;
     this.damageTexts.push({
       x: x + (Math.random() - 0.5) * 12,
       y: y,
@@ -1354,7 +1420,10 @@ var Game = {
     });
   },
 
-  shake: function (a) { this.shakeAmt = Math.max(this.shakeAmt, a); },
+  shake: function (a) {
+    var maxShake = this.performanceMode ? 5 : 20;
+    this.shakeAmt = Math.max(this.shakeAmt, Math.min(a, maxShake));
+  },
 
   updateSpellButtons: function () {
     var p = this.player;
@@ -1371,14 +1440,17 @@ var Game = {
       var locked = p.mana < cost || (p.spellDisabled && p.spellDisabled[i]);
       if (locked) btn.classList.add('locked');
       else btn.classList.remove('locked');
-      // обновить текст стоимости
       var costEl = btn.querySelector('.cost');
       if (costEl) costEl.textContent = cost;
     }
   },
 
+  /* ==================== DRAW ==================== */
   draw: function () {
     var ctx = this.ctx, W = this.W, H = this.H;
+    // Обновляем здесь тоже — draw не всегда идёт после update
+    this.performanceMode = this.lowQuality || this.bloodMoonActive;
+
     ctx.fillStyle = '#0a0714';
     ctx.fillRect(0, 0, W, H);
 
@@ -1390,7 +1462,10 @@ var Game = {
       return;
     }
 
-    this.drawNebula(ctx, 0.35);
+    // Во время blood moon красный оверлей закрывает небулу, не рисуем
+    if (!this.bloodMoonActive) {
+      this.drawNebula(ctx, 0.35);
+    }
     this.drawStars(ctx, 0.5);
 
     ctx.save();
@@ -1403,9 +1478,13 @@ var Game = {
     var viewT = this.camY - 50;
     var viewB = this.camY + H + 50;
 
-    for (var i = 0; i < this.pickups.length; i++) this.pickups[i].draw(ctx);
+    // Pickups с culling
+    for (var i = 0; i < this.pickups.length; i++) {
+      var pk = this.pickups[i];
+      if (pk.x < viewL - 20 || pk.x > viewR + 20 || pk.y < viewT - 20 || pk.y > viewB + 20) continue;
+      pk.draw(ctx);
+    }
 
-    // метеоры (под врагами, чтобы показать прицельную зону)
     this.drawMeteors(ctx);
 
     for (var j = 0; j < this.projectiles.length; j++) {
@@ -1478,7 +1557,7 @@ var Game = {
       var mt = this.meteors[i];
       if (mt.impacted) continue;
       var progress = 1 - mt.delay / mt.maxDelay;
-      // прицельная зона
+
       ctx.save();
       ctx.globalAlpha = 0.3 + progress * 0.6;
       ctx.strokeStyle = '#ff7a3c';
@@ -1496,8 +1575,7 @@ var Game = {
       ctx.fill();
       ctx.restore();
 
-      // падающий метеор
-      if (!this.lowQuality) {
+      if (!this.performanceMode) {
         var fallY = mt.y - (1 - progress) * 900;
         var tg = ctx.createRadialGradient(mt.x, fallY, 0, mt.x, fallY, 50);
         tg.addColorStop(0, '#fff');
@@ -1508,7 +1586,6 @@ var Game = {
         ctx.beginPath();
         ctx.arc(mt.x, fallY, 50, 0, 6.2832);
         ctx.fill();
-        // хвост
         var tailGrad = ctx.createLinearGradient(mt.x, fallY - 180, mt.x, fallY);
         tailGrad.addColorStop(0, 'rgba(255,150,60,0)');
         tailGrad.addColorStop(1, 'rgba(255,180,80,0.85)');
@@ -1530,42 +1607,8 @@ var Game = {
   },
 
   drawBloodMoonOverlay: function (ctx) {
-    if (!this.bloodMoonActive) return;
-    // красный туман по краям
-    var g = ctx.createRadialGradient(this.W / 2, this.H / 2, this.H * 0.2,
-      this.W / 2, this.H / 2, Math.max(this.W, this.H) * 0.75);
-    g.addColorStop(0, 'rgba(180,20,20,0)');
-    g.addColorStop(0.6, 'rgba(180,20,20,0.10)');
-    g.addColorStop(1, 'rgba(120,10,10,0.42)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, this.W, this.H);
-    // луна в правом верхнем углу
-    var mx = this.W - 70;
-    var my = 100;
-    ctx.save();
-    ctx.globalAlpha = 0.75;
-    var moonG = ctx.createRadialGradient(mx, my, 0, mx, my, 40);
-    moonG.addColorStop(0, '#ff3333');
-    moonG.addColorStop(0.6, '#8a1010');
-    moonG.addColorStop(1, 'rgba(120,10,10,0)');
-    ctx.fillStyle = moonG;
-    ctx.beginPath();
-    ctx.arc(mx, my, 40, 0, 6.2832);
-    ctx.fill();
-    ctx.globalAlpha = 0.6;
-    ctx.fillStyle = '#a01c1c';
-    ctx.beginPath();
-    ctx.arc(mx, my, 22, 0, 6.2832);
-    ctx.fill();
-    // кратеры
-    ctx.globalAlpha = 0.4;
-    ctx.fillStyle = '#5a0808';
-    ctx.beginPath();
-    ctx.arc(mx - 6, my - 4, 4, 0, 6.2832);
-    ctx.arc(mx + 7, my + 3, 3, 0, 6.2832);
-    ctx.arc(mx - 2, my + 8, 2.5, 0, 6.2832);
-    ctx.fill();
-    ctx.restore();
+    if (!this.bloodMoonActive || !this._bloodMoonCanvas) return;
+    ctx.drawImage(this._bloodMoonCanvas, 0, 0);
   },
 
   drawNebula: function (ctx, parallax) {
@@ -1586,6 +1629,7 @@ var Game = {
 
   drawStars: function (ctx, parallax) {
     var t = performance.now() * 0.001;
+    var animate = !this.performanceMode;
     ctx.save();
     var px = -this.camX * parallax * 0.15;
     var py = -this.camY * parallax * 0.15;
@@ -1593,8 +1637,9 @@ var Game = {
       var s = this.stars[i];
       var sx = ((s.x + px) % this.W + this.W) % this.W;
       var sy = ((s.y + py) % this.H + this.H) % this.H;
-      var twinkle = this.lowQuality ? 0.75 : (0.6 + Math.abs(Math.sin(t * s.speed + s.phase)) * 0.4);
-      ctx.globalAlpha = twinkle * 0.75;
+      // В perf mode — фиксированная яркость, без sin
+      var alpha = animate ? (0.6 + Math.abs(Math.sin(t * s.speed + s.phase)) * 0.4) * 0.75 : 0.75;
+      ctx.globalAlpha = alpha;
       ctx.fillStyle = s.color;
       ctx.beginPath(); ctx.arc(sx, sy, s.s, 0, 6.2832); ctx.fill();
     }
@@ -1633,7 +1678,7 @@ var Game = {
     for (var y = sy; y < bottom; y += step) { ctx.moveTo(left, y); ctx.lineTo(right, y); }
     ctx.stroke();
 
-    if (!this.lowQuality) {
+    if (!this.performanceMode) {
       ctx.save();
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       var t = performance.now() * 0.0006;
@@ -1730,11 +1775,16 @@ var Game = {
     ctx.lineWidth = 4;
     ctx.strokeStyle = 'rgba(0,0,0,0.7)';
     ctx.strokeText(text, 0, 0);
-    var g = ctx.createLinearGradient(-80, 0, 80, 0);
-    g.addColorStop(0, '#ffc857');
-    g.addColorStop(0.5, '#ffffff');
-    g.addColorStop(1, '#ffc857');
-    ctx.fillStyle = g;
+    // Упростим градиент при perfMode
+    if (this.performanceMode) {
+      ctx.fillStyle = '#ffc857';
+    } else {
+      var g = ctx.createLinearGradient(-80, 0, 80, 0);
+      g.addColorStop(0, '#ffc857');
+      g.addColorStop(0.5, '#ffffff');
+      g.addColorStop(1, '#ffc857');
+      ctx.fillStyle = g;
+    }
     ctx.fillText(text, 0, 0);
     ctx.restore();
   },
@@ -1843,7 +1893,6 @@ var Game = {
 
     this.drawBossBar(ctx);
 
-    // Класс мага — рядом с уровнем
     if (this.mageClass) {
       var cls = null;
       for (var ci = 0; ci < MAGE_CLASSES.length; ci++) {
@@ -1870,7 +1919,7 @@ var Game = {
       ctx.textBaseline = 'bottom';
       ctx.font = 'bold 13px -apple-system, sans-serif';
       ctx.fillStyle = '#ff6666';
-      ctx.fillText('🌑 КРОВАВАЯ ЛУНА · очки x3', this.W / 2, this.H - 30);
+      ctx.fillText('🌑 КРОВАВАЯ ЛУНА · очки x4', this.W / 2, this.H - 30);
     } else if (this.waveActive && !this.bossActive) {
       var remaining = this.enemies.length + this.spawnQueue.length;
       ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
@@ -1879,14 +1928,13 @@ var Game = {
       ctx.fillText('врагов: ' + remaining, this.W / 2, this.H - 12);
     }
 
-    if (p.hurtFlash > 0) {
-      var a = Utils.clamp(p.hurtFlash / 0.25, 0, 1) * 0.4;
-      var g = ctx.createRadialGradient(this.W / 2, this.H / 2, this.H * 0.25,
-        this.W / 2, this.H / 2, this.H * 0.72);
-      g.addColorStop(0, 'rgba(255,60,80,0)');
-      g.addColorStop(1, 'rgba(255,60,80,' + a + ')');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, this.W, this.H);
+    // Вспышка урона — из кешированного canvas
+    if (p.hurtFlash > 0 && this._hurtFlashCanvas) {
+      var a = Utils.clamp(p.hurtFlash / 0.25, 0, 1);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.drawImage(this._hurtFlashCanvas, 0, 0);
+      ctx.restore();
     }
   },
 
@@ -1923,12 +1971,18 @@ var Game = {
         var sum = 0;
         for (var i = 0; i < this.frameTimes.length; i++) sum += this.frameTimes[i];
         var avg = sum / this.frameTimes.length;
-        if (!this.lowQuality && avg > 26) {
+
+        // Кровавая луна — форсим lowQuality (но не трогаем состояние, только флаг)
+        if (this.bloodMoonActive && !this.lowQuality) {
           this.lowQuality = true;
-          this._qualityCooldown = 90;
-        } else if (this.lowQuality && avg < 16 && this._qualityCooldown <= 0) {
-          this.lowQuality = false;
-          this._qualityCooldown = 90;
+        } else if (!this.bloodMoonActive) {
+          if (!this.lowQuality && avg > 26) {
+            this.lowQuality = true;
+            this._qualityCooldown = 90;
+          } else if (this.lowQuality && avg < 16 && this._qualityCooldown <= 0) {
+            this.lowQuality = false;
+            this._qualityCooldown = 90;
+          }
         }
       }
       if (this._qualityCooldown > 0) this._qualityCooldown--;
