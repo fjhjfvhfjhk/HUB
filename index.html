@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0915">
+<meta name="description" content="Мой личный хаб веб-проектов — игры, эксперименты, песочницы">
+<title>Мои проекты</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="hub.css">
+</head>
+<body>
+
+<!-- Фон -->
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="bg-orb bg-orb--1" aria-hidden="true"></div>
+<div class="bg-orb bg-orb--2" aria-hidden="true"></div>
+<div class="bg-orb bg-orb--3" aria-hidden="true"></div>
+
+<!-- Шапка -->
+<header class="hub-header">
+  <a class="brand" href="./" aria-label="На главную">
+    <span class="brand__mark">✦</span>
+    <span class="brand__name">Проекты</span>
+  </a>
+
+  <nav class="hub-nav" aria-label="Фильтры">
+    <button class="hub-nav__btn is-active" data-view="all">Все</button>
+    <button class="hub-nav__btn" data-view="favorites">★ Избранное</button>
+    <button class="hub-nav__btn" data-view="recent">Недавние</button>
+  </nav>
+
+  <div class="search">
+    <svg class="search__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path>
+    </svg>
+    <input id="search-input" class="search__input" type="search" placeholder="Поиск проекта…" autocomplete="off" aria-label="Поиск проектов">
+    <kbd class="search__kbd">/</kbd>
+  </div>
+</header>
+
+<!-- Hero -->
+<section class="hero">
+  <h1 class="hero__title">
+    <span class="hero__title-grad">Коллекция проектов</span>
+  </h1>
+  <p class="hero__subtitle">Все игры и эксперименты в одном месте. Кликни — запустится прямо здесь.</p>
+
+  <div class="hero__stats" role="list">
+    <div class="stat" role="listitem">
+      <div class="stat__value" id="stat-total">0</div>
+      <div class="stat__label">проектов</div>
+    </div>
+    <div class="stat" role="listitem">
+      <div class="stat__value" id="stat-tags">0</div>
+      <div class="stat__label">категорий</div>
+    </div>
+    <div class="stat" role="listitem">
+      <div class="stat__value" id="stat-fav">0</div>
+      <div class="stat__label">в избранном</div>
+    </div>
+  </div>
+</section>
+
+<!-- Теги -->
+<section class="tagbar" id="tagbar" aria-label="Фильтр по категории">
+  <button class="tag-chip is-active" data-tag="all">Все</button>
+</section>
+
+<!-- Сетка проектов -->
+<main class="grid" id="grid" aria-live="polite"></main>
+
+<!-- Пусто -->
+<div class="empty" id="empty" hidden>
+  <div class="empty__icon">◌</div>
+  <div class="empty__title">Ничего не найдено</div>
+  <div class="empty__text" id="empty-text">Попробуй другой запрос или сними фильтр.</div>
+</div>
+
+<!-- Ошибка загрузки -->
+<div class="empty" id="load-error" hidden>
+  <div class="empty__icon">⚠</div>
+  <div class="empty__title">Не удалось загрузить projects.json</div>
+  <div class="empty__text">Убедись, что файл лежит в корне и открыт через http-сервер, а не file://</div>
+</div>
+
+<footer class="hub-footer">
+  <span>© 2026 · Мой личный хаб</span>
+  <span class="hub-footer__dot">·</span>
+  <button class="hub-footer__reset" id="reset-btn" type="button" title="Сбросить избранное и историю">сбросить данные</button>
+</footer>
+
+<!-- Модалка проекта -->
+<div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal__backdrop" data-close="1"></div>
+  <div class="modal__panel">
+    <div class="modal__bar">
+      <div class="modal__ident">
+        <span class="modal__icon" id="modal-icon"></span>
+        <span class="modal__title" id="modal-title"></span>
+      </div>
+      <div class="modal__actions">
+        <a class="btn btn--ghost" id="modal-external" href="#" target="_blank" rel="noopener">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M21 14v7H3V3h7"></path>
+          </svg>
+          Новая вкладка
+        </a>
+        <button class="btn btn--ghost btn--icon" data-close="1" aria-label="Закрыть">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <iframe id="modal-frame" class="modal__frame"
+            title="Запуск проекта"
+            allow="autoplay; fullscreen; gamepad; clipboard-write; clipboard-read; accelerometer; gyroscope"
+            allowfullscreen
+            referrerpolicy="no-referrer-when-downgrade"></iframe>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast" hidden></div>
+
+<script src="hub.js"></script>
+</body>
+</html>
