@@ -1,5 +1,5 @@
 /* ============================================================
-   DATA — редкости, улучшения, мета-прокачка, заклинания, враги, боссы
+   DATA — редкости, классы, улучшения, заклинания, враги, боссы
    ============================================================ */
 
 var RARITIES = {
@@ -17,12 +17,46 @@ function rollRarity() {
   return 'common';
 }
 
+/* ============================================================
+   КЛАССЫ МАГОВ
+   ============================================================ */
+var MAGE_CLASSES = [
+  {
+    id: 'pyromancer',
+    icon: '🔥',
+    name: 'Пиромант',
+    desc: 'Фаербол дешевле и быстрее, мощный поджог, +15% урона. Нет ледяной новы.',
+    color: '#ff7a3c'
+  },
+  {
+    id: 'cryomancer',
+    icon: '❄',
+    name: 'Криомант',
+    desc: 'Нова сильнее и дешевле. Замедленные враги получают +50% урона.',
+    color: '#7fdcff'
+  },
+  {
+    id: 'electromancer',
+    icon: '⚡',
+    name: 'Электромант',
+    desc: 'Цепь бьёт по 6 врагам +60px радиуса. +20% крита. Мана регенерирует медленнее.',
+    color: '#9ee8ff'
+  }
+];
+
+/* ============================================================
+   СПИСОК ЗАКЛИНАНИЙ
+   ============================================================ */
 var SPELLS = [
   { id: 'nova',     name: 'Ледяная нова', icon: '❄', cost: 28, cooldown: 5.5 },
   { id: 'fireball', name: 'Огненный шар', icon: '🔥', cost: 18, cooldown: 1.5 },
-  { id: 'chain',    name: 'Цепь молний',  icon: '⚡', cost: 32, cooldown: 6.0 }
+  { id: 'chain',    name: 'Цепь молний',  icon: '⚡', cost: 32, cooldown: 6.0 },
+  { id: 'meteor',   name: 'Метеор',       icon: '☄', cost: 40, cooldown: 12.0 }
 ];
 
+/* ============================================================
+   ТИПЫ ВРАГОВ
+   ============================================================ */
 var ENEMY_TYPES = {
   imp:    { hp: 22, speed: 62, damage: 8,  radius: 12, xp: 3,  color: '#ff5b6e', colorDark: '#a02134', glyph: 'imp' },
   wraith: { hp: 34, speed: 84, damage: 11, radius: 13, xp: 5,  color: '#b56bff', colorDark: '#5c2a94', glyph: 'wraith' },
@@ -34,46 +68,20 @@ var ENEMY_TYPES = {
    ТИПЫ БОССОВ
    ============================================================ */
 var BOSS_TYPES = [
-  {
-    id: 'devourer',
-    name: 'Пожиратель Бездны',
-    color: '#ff3355',
-    colorDark: '#5a1020',
-    shape: 'octagon',
-    desc: 'Стреляет веером и делает рывки'
-  },
-  {
-    id: 'summoner',
-    name: 'Архилич',
-    color: '#b56bff',
-    colorDark: '#3a0e5e',
-    shape: 'spikes',
-    desc: 'Призывает стаи прислужников'
-  },
-  {
-    id: 'mage',
-    name: 'Безумный Маг',
-    color: '#4d9dff',
-    colorDark: '#0e2a52',
-    shape: 'star',
-    desc: 'Телепортируется и бьёт магией'
-  },
-  {
-    id: 'titan',
-    name: 'Вечный Страж',
-    color: '#ff9a3c',
-    colorDark: '#5a3010',
-    shape: 'hex',
-    desc: 'Огромный и медленный, бьёт вблизи'
-  }
+  { id: 'devourer', name: 'Пожиратель Бездны', color: '#ff3355', colorDark: '#5a1020', shape: 'octagon' },
+  { id: 'summoner', name: 'Архилич',           color: '#b56bff', colorDark: '#3a0e5e', shape: 'spikes' },
+  { id: 'mage',     name: 'Безумный Маг',      color: '#4d9dff', colorDark: '#0e2a52', shape: 'star' },
+  { id: 'titan',    name: 'Вечный Страж',      color: '#ff9a3c', colorDark: '#5a3010', shape: 'hex' }
 ];
 
 function pickBossType(wave) {
-  // Циклический выбор: 5 волна → devourer, 10 → summoner, 15 → mage, 20 → titan, 25 → devourer...
   var idx = Math.floor(wave / 5 - 1);
   return BOSS_TYPES[((idx % BOSS_TYPES.length) + BOSS_TYPES.length) % BOSS_TYPES.length];
 }
 
+/* ============================================================
+   УЛУЧШЕНИЯ
+   ============================================================ */
 var UPGRADES = [
   { id: 'dmg',     icon: '🗡', name: 'Острый фокус',     base: 0.20,
     desc: function (v) { return '+' + Math.round(v * 100) + '% урона'; },
@@ -119,6 +127,9 @@ var UPGRADES = [
     apply: function (p, v) { var a = Math.min(2, Math.round(v)); p.boltPierce += Math.max(1, a); } }
 ];
 
+/* ============================================================
+   МЕТА-ПРОГРЕССИЯ
+   ============================================================ */
 var META_STATS = [
   { id: 'hp',       icon: '❤', name: 'Здоровье',    baseCost: 50, costScale: 1.6, maxLevel: 5,
     desc: function (lvl) { return '+' + (lvl * 10) + ' HP'; },

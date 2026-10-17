@@ -1,12 +1,12 @@
 /* ============================================================
-   GAME — главный цикл, волны, элитные враги, боссы, HUD
+   GAME — классы магов, метеор, кровавая луна, fullscreen
    ============================================================ */
 
 var Game = {
   canvas: null, ctx: null, W: 0, H: 0, dpr: 1,
   state: 'menu', lastTime: 0, accumulator: 0,
   player: null, enemies: [], projectiles: [], enemyProjectiles: [],
-  particles: [], pickups: [], damageTexts: [],
+  particles: [], pickups: [], damageTexts: [], meteors: [],
   camX: 0, camY: 0, shakeAmt: 0, shakeX: 0, shakeY: 0,
   wave: 0, waveActive: false, spawnQueue: [], spawnTimer: 0,
   kills: 0, score: 0, best: 0,
@@ -21,6 +21,9 @@ var Game = {
   screenFlash: 0, screenFlashColor: '#ffffff',
   _playerTrailTimer: 0,
   bossActive: null,
+  mageClass: null,
+  bloodMoonActive: false,
+  bloodMoonScoreMul: 1,
   meta: { souls: 0, totalSouls: 0, stats: {}, spells: {} },
   spatialGrid: null,
   frameTimes: [],
@@ -43,11 +46,17 @@ var Game = {
     var self = this;
     window.addEventListener('resize', function () { self.resize(); });
     window.addEventListener('orientationchange', function () { setTimeout(function () { self.resize(); }, 200); });
+    document.addEventListener('fullscreenchange', function () { self.resize(); });
+    document.addEventListener('webkitfullscreenchange', function () { self.resize(); });
 
     this.best = parseInt(Storage.get('arcanum_best', '0'), 10) || 0;
     var bestEl = document.getElementById('best-score');
     if (bestEl) bestEl.textContent = Utils.formatNum(this.best);
     this.updateSoulsDisplay();
+
+    // загрузка последнего класса
+    var savedClass = Storage.get('arcanum_class', 'classic');
+    this.mageClass = (savedClass && savedClass !== 'classic') ? savedClass : null;
 
     this.buildHUD();
     this.bindUI();
@@ -104,7 +113,6 @@ var Game = {
     this.buildVignette();
   },
 
-  /* Кеш виньетки — устраняет мерцание от пересоздания градиента каждый кадр */
   buildVignette: function () {
     var W = this.W, H = this.H;
     var c = document.createElement('canvas');
@@ -180,7 +188,8 @@ var Game = {
     this.spellBtns = [
       document.getElementById('btn-spell-0'),
       document.getElementById('btn-spell-1'),
-      document.getElementById('btn-spell-2')
+      document.getElementById('btn-spell-2'),
+      document.getElementById('btn-spell-3')
     ];
     this.pauseBtn = document.getElementById('btn-pause');
     var self = this;
@@ -211,13 +220,68 @@ var Game = {
     var $ = function (id) { return document.getElementById(id); };
     var self = this;
     var on = function (id, fn) { var el = $(id); if (el) el.addEventListener('click', fn); };
-    on('btn-play',   function () { Audio2.unlock(); Audio2.uiClick(); self.startGame(); });
+    on('btn-play',   function () { Audio2.unlock(); Audio2.uiClick(); self.showClassSelect(); });
     on('btn-retry',  function () { Audio2.uiClick(); self.startGame(); });
     on('btn-menu',   function () { Audio2.uiClick(); self.setState('menu'); });
     on('btn-quit',   function () { Audio2.uiClick(); self.setState('menu'); });
     on('btn-resume', function () { Audio2.uiClick(); self.resume(); });
     on('btn-book',      function () { Audio2.bookOpen(); self.openBook(); });
     on('btn-book-over', function () { Audio2.bookOpen(); self.openBook(); });
+    on('btn-fullscreen',   function () { self.toggleFullscreen(); });
+    on('btn-fullscreen-2', function () { self.toggleFullscreen(); });
+    on('btn-class-back',   function () { Audio2.uiClick(); self.setState('menu'); });
+  },
+
+  toggleFullscreen: function () {
+    try {
+      var el = document.documentElement;
+      var isFs = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+      if (!isFs) {
+        if (el.requestFullscreen) el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        else if (el.msRequestFullscreen) el.msRequestFullscreen();
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        else if (document.msExitFullscreen) document.msExitFullscreen();
+      }
+    } catch (e) { }
+  },
+
+  showClassSelect: function () {
+    var list = document.getElementById('class-list');
+    if (!list) { this.startGame(); return; }
+    list.innerHTML = '';
+    var self = this;
+    var allClasses = MAGE_CLASSES.concat([{
+      id: 'classic', icon: '✦', name: 'Классик',
+      desc: 'Сбалансированный маг без специализации. Все заклинания доступны.',
+      color: '#9d92c4'
+    }]);
+    for (var i = 0; i < allClasses.length; i++) {
+      (function (cls) {
+        var card = document.createElement('div');
+        card.className = 'class-card ' + cls.id;
+        card.innerHTML =
+          '<div class="class-card-icon" style="color:' + cls.color + '">' + cls.icon + '</div>' +
+          '<div class="class-card-body">' +
+            '<div class="class-card-name">' + cls.name + '</div>' +
+            '<div class="class-card-desc">' + cls.desc + '</div>' +
+          '</div>';
+        var handler = function (e) {
+          if (e) { e.preventDefault(); e.stopPropagation(); }
+          Audio2.uiClick();
+          Utils.vibrate(20);
+          self.mageClass = (cls.id === 'classic') ? null : cls.id;
+          Storage.set('arcanum_class', self.mageClass || 'classic');
+          self.startGame();
+        };
+        card.addEventListener('click', handler);
+        card.addEventListener('touchstart', handler, { passive: false });
+        list.appendChild(card);
+      })(allClasses[i]);
+    }
+    this.setState('class');
   },
 
   openBook: function () {
@@ -227,8 +291,8 @@ var Game = {
 
   setState: function (s) {
     this.state = s;
-    var map = { menu: 'screen-menu', upgrade: 'screen-upgrade', paused: 'screen-pause', over: 'screen-over', book: 'screen-book', playing: null };
-    var ids = ['screen-menu', 'screen-upgrade', 'screen-pause', 'screen-over', 'screen-book'];
+    var map = { menu: 'screen-menu', class: 'screen-class', upgrade: 'screen-upgrade', paused: 'screen-pause', over: 'screen-over', book: 'screen-book', playing: null };
+    var ids = ['screen-menu', 'screen-class', 'screen-upgrade', 'screen-pause', 'screen-over', 'screen-book'];
     for (var i = 0; i < ids.length; i++) {
       var el = document.getElementById(ids[i]);
       if (el) el.classList.remove('active');
@@ -404,6 +468,27 @@ var Game = {
     return best;
   },
 
+  applyClassModifiers: function (p) {
+    var cls = this.mageClass;
+    if (!cls) return;
+    if (cls === 'pyromancer') {
+      p.damageMul *= 1.15;
+      p.metaFireBurn += 4;
+      p.spellDisabled[0] = true;
+      p.spellCostMod[1] = 14 / SPELLS[1].cost;
+      p.spellCdMod[1] = 1.2 / SPELLS[1].cooldown;
+    } else if (cls === 'cryomancer') {
+      p.metaNovaDmg += 0.5;
+      p.spellCostMod[0] = 22 / SPELLS[0].cost;
+      p.spellCdMod[0] = 4.0 / SPELLS[0].cooldown;
+    } else if (cls === 'electromancer') {
+      p.critChance += 0.20;
+      p.manaRegen *= 0.8;
+      p.metaChainRange += 60;
+      p.chainMaxJumps = 6;
+    }
+  },
+
   startGame: function () {
     this.player = new Player(0, 0);
 
@@ -417,9 +502,10 @@ var Game = {
       var lvl2 = this.meta.spells[up2.id] || 0;
       if (lvl2 > 0) up2.apply(this.player, lvl2);
     }
+    this.applyClassModifiers(this.player);
 
     this.enemies = []; this.projectiles = []; this.enemyProjectiles = [];
-    this.particles = []; this.pickups = []; this.damageTexts = [];
+    this.particles = []; this.pickups = []; this.damageTexts = []; this.meteors = [];
     this.camX = -this.W / 2; this.camY = -this.H / 2;
     this.shakeAmt = 0;
     this.wave = 0; this.waveActive = false;
@@ -433,6 +519,8 @@ var Game = {
     this.screenFlash = 0;
     this._playerTrailTimer = 0;
     this.bossActive = null;
+    this.bloodMoonActive = false;
+    this.bloodMoonScoreMul = 1;
     this.lowQuality = false;
     this._qualityCooldown = 0;
     this.frameTimes = [];
@@ -476,6 +564,26 @@ var Game = {
   startWave: function () {
     this.wave++;
     this.waveActive = true;
+
+    // Кровавая луна — шанс на обычных волнах начиная с 4-й
+    if (this.wave >= 4 && this.wave % 5 !== 0) {
+      if (Math.random() < 0.25) {
+        this.bloodMoonActive = true;
+        this.bloodMoonScoreMul = 3;
+        this.screenFlash = 0.5;
+        this.screenFlashColor = 'rgba(200,20,20,0.55)';
+        Utils.vibrate(200);
+        Audio2.bossAppear();
+        this.shake(15);
+      } else {
+        this.bloodMoonActive = false;
+        this.bloodMoonScoreMul = 1;
+      }
+    } else {
+      this.bloodMoonActive = false;
+      this.bloodMoonScoreMul = 1;
+    }
+
     if (this.wave % 5 === 0) {
       this.spawnQueue = ['imp', 'imp'];
       this.spawnBoss();
@@ -534,10 +642,15 @@ var Game = {
     var r = minR + Math.random() * (maxR - minR);
     var x = p.x + Math.cos(a) * r;
     var y = p.y + Math.sin(a) * r;
-    // элитные враги: 8% + 0.2% за волну, максимум 20%
     var eliteChance = Math.min(0.20, 0.08 + this.wave * 0.002);
     var isElite = Math.random() < eliteChance;
-    this.enemies.push(new Enemy(x, y, type, this.wave, isElite));
+    var enemy = new Enemy(x, y, type, this.wave, isElite);
+    if (this.bloodMoonActive) {
+      enemy.maxHp = Math.round(enemy.maxHp * 1.5);
+      enemy.hp = enemy.maxHp;
+      enemy.damage *= 1.25;
+    }
+    this.enemies.push(enemy);
     if (!this.lowQuality) {
       this.particles.push(new RingParticle(x, y, isElite ? 60 : 40, 0.4, isElite ? '#ffc857' : ENEMY_TYPES[type].color, isElite ? 3 : 2));
       var spCount = isElite ? 10 : 6;
@@ -565,7 +678,7 @@ var Game = {
       }
     } else if (this.enemies.length === 0) {
       this.waveActive = false;
-      this.score += 25 * this.wave;
+      this.score += 25 * this.wave * this.bloodMoonScoreMul;
       Audio2.levelUp(); Utils.vibrate(40);
       this.showUpgrades();
     }
@@ -671,16 +784,20 @@ var Game = {
     if (this.state !== 'playing') return;
     var p = this.player;
     if (!p || p.dead) return;
+    if (p.spellDisabled && p.spellDisabled[index]) return;
     var spell = SPELLS[index];
     if (p.cd[index] > 0) return;
-    if (p.mana < spell.cost) { Utils.vibrate(15); return; }
-    p.mana -= spell.cost;
-    p.cd[index] = spell.cooldown * p.cooldownMul;
+    var cost = Math.round(spell.cost * (p.spellCostMod ? p.spellCostMod[index] : 1));
+    if (p.mana < cost) { Utils.vibrate(15); return; }
+    p.mana -= cost;
+    var cdMul = p.spellCdMod ? p.spellCdMod[index] : 1;
+    p.cd[index] = spell.cooldown * p.cooldownMul * cdMul;
     p.castFlash = 0.15;
     Utils.vibrate(20);
     if (spell.id === 'nova') this.castNova(p);
     else if (spell.id === 'fireball') this.castFireball(p);
     else if (spell.id === 'chain') this.castChain(p);
+    else if (spell.id === 'meteor') this.castMeteor(p);
   },
 
   castNova: function (p) {
@@ -761,7 +878,7 @@ var Game = {
 
   castChain: function (p) {
     Audio2.castChain();
-    var maxJumps = 4;
+    var maxJumps = p.chainMaxJumps || 4;
     var range = 220 + (p.metaChainRange || 0);
     var dmgBase = 26 * p.damageMul;
     var current = { x: p.x, y: p.y };
@@ -808,6 +925,86 @@ var Game = {
       }
     }
     if (points.length > 1) { this.shake(5); this.screenFlash = 0.08; this.screenFlashColor = 'rgba(158,232,255,0.25)'; }
+  },
+
+  castMeteor: function (p) {
+    Audio2.castFire();
+    var aimAngle = Math.atan2(this.aimVec.y, this.aimVec.x);
+    var target = this.findAutoAimTarget(p.x, p.y, 600, aimAngle, Math.PI * 0.7);
+    var tx, ty;
+    if (target) {
+      tx = target.x;
+      ty = target.y;
+      this.lockTarget = target;
+      this.lockTimer = 1.0;
+    } else {
+      tx = p.x + this.aimVec.x * 250;
+      ty = p.y + this.aimVec.y * 250;
+    }
+    var meteor = {
+      x: tx, y: ty,
+      delay: 1.0, maxDelay: 1.0,
+      radius: 200,
+      damage: 120 * p.damageMul,
+      impacted: false,
+      dead: false
+    };
+    this.meteors.push(meteor);
+    // предупреждение на земле
+    if (!this.lowQuality) {
+      this.particles.push(new RingParticle(tx, ty, 30, 0.5, '#ff9a3c', 2));
+    }
+    Utils.vibrate(30);
+    Audio2.lock();
+  },
+
+  updateMeteors: function (dt) {
+    var p = this.player;
+    for (var mi = this.meteors.length - 1; mi >= 0; mi--) {
+      var mt = this.meteors[mi];
+      mt.delay -= dt;
+      if (!mt.impacted && mt.delay <= 0) {
+        mt.impacted = true;
+        // AoE урон
+        for (var i = 0; i < this.enemies.length; i++) {
+          var e = this.enemies[i];
+          if (e.dead) continue;
+          var d = Utils.dist(mt.x, mt.y, e.x, e.y);
+          if (d < mt.radius + e.radius) {
+            var isCrit = Math.random() < p.critChance;
+            var dmg = isCrit ? mt.damage * p.critMul : mt.damage;
+            e.hurt(dmg);
+            e.knockback(Math.atan2(e.y - mt.y, e.x - mt.x), 320);
+            e.applyBurn(8, 3);
+            this.spawnDamageText(e.x, e.y - e.radius, dmg, isCrit, '#ff9a3c');
+            this.applyLifesteal(dmg);
+            if (e.dead) this.onEnemyDeath(e);
+          }
+        }
+        // мощные эффекты
+        this.shake(20);
+        this.screenFlash = 0.4;
+        this.screenFlashColor = 'rgba(255,140,50,0.55)';
+        Utils.vibrate(120);
+        if (!this.lowQuality) {
+          this.particles.push(new RingParticle(mt.x, mt.y, mt.radius, 0.7, '#ff9a3c', 6));
+          this.particles.push(new RingParticle(mt.x, mt.y, mt.radius * 1.3, 1.0, 'rgba(255,180,80,0.4)', 4));
+          this.particles.push(new RingParticle(mt.x, mt.y, mt.radius * 0.7, 0.45, '#ffffff', 3));
+          for (var k = 0; k < 40; k++) {
+            if (this.particles.length >= this.maxParticles) break;
+            var a = Math.random() * 6.2832;
+            var s = 150 + Math.random() * 300;
+            this.particles.push(new Particle(mt.x, mt.y,
+              Math.cos(a) * s, Math.sin(a) * s,
+              0.5 + Math.random() * 0.6,
+              Math.random() < 0.5 ? '#ffb066' : '#ffd166', 3 + Math.random() * 3));
+          }
+        }
+      }
+      if (mt.impacted) mt.delay -= dt;
+      if (mt.impacted && mt.delay < -0.6) mt.dead = true;
+      if (mt.dead) this.meteors.splice(mi, 1);
+    }
   },
 
   applyLifesteal: function (dmg) {
@@ -877,6 +1074,10 @@ var Game = {
       if (this.comboTimer <= 0) this.comboCount = 0;
     }
 
+    // метеоры
+    this.updateMeteors(dt);
+
+    // враги
     for (var i = this.enemies.length - 1; i >= 0; i--) {
       var e = this.enemies[i];
       if (e.dead) {
@@ -887,7 +1088,6 @@ var Game = {
           this.shake(20);
           this.screenFlash = 0.5;
           this.screenFlashColor = e.hexToRgba(e.bossColor, 0.5);
-          // разный дроп по типу
           var drops = this.getBossDrops(e);
           for (var di = 0; di < drops.length; di++) this.pickups.push(drops[di]);
         }
@@ -919,6 +1119,7 @@ var Game = {
 
     this.spatialGrid.rebuild(this.enemies);
 
+    // снаряды игрока
     for (var j = this.projectiles.length - 1; j >= 0; j--) {
       var pr = this.projectiles[j];
       pr.update(dt);
@@ -944,7 +1145,9 @@ var Game = {
         var dd = Utils.dist(pr.x, pr.y, en.x, en.y);
         if (dd < pr.radius + en.radius) {
           var isCrit = Math.random() < p.critChance;
-          var dmg = isCrit ? pr.damage * p.critMul : pr.damage;
+          var dmgMult = 1;
+          if (this.mageClass === 'cryomancer' && en.slowTimer > 0) dmgMult = 1.5;
+          var dmg = isCrit ? pr.damage * p.critMul * dmgMult : pr.damage * dmgMult;
           en.hurt(dmg);
           pr.hitSet.push(en);
           var pa = Math.atan2(pr.vy, pr.vx);
@@ -977,6 +1180,7 @@ var Game = {
       }
     }
 
+    // вражеские снаряды
     for (var ep = this.enemyProjectiles.length - 1; ep >= 0; ep--) {
       var epr = this.enemyProjectiles[ep];
       epr.update(dt);
@@ -994,6 +1198,7 @@ var Game = {
       }
     }
 
+    // пикапы
     for (var m = this.pickups.length - 1; m >= 0; m--) {
       var pk = this.pickups[m];
       var collected = pk.update(dt, p);
@@ -1015,6 +1220,7 @@ var Game = {
       }
     }
 
+    // частицы
     for (var n2 = this.particles.length - 1; n2 >= 0; n2--) {
       var pt = this.particles[n2];
       pt.update(dt);
@@ -1024,6 +1230,7 @@ var Game = {
       this.particles.splice(0, this.particles.length - this.maxParticles);
     }
 
+    // текст урона
     for (var o = this.damageTexts.length - 1; o >= 0; o--) {
       var txt = this.damageTexts[o];
       txt.life -= dt;
@@ -1054,25 +1261,30 @@ var Game = {
   getBossDrops: function (boss) {
     var drops = [];
     var lvl = boss.bossLevel;
-    // у всех — базовые
+    var mul = this.bloodMoonActive ? 3 : 1;
     drops.push(new Pickup(boss.x, boss.y, 'hp', 40 + lvl * 10));
     drops.push(new Pickup(boss.x + 20, boss.y, 'mana', 40 + lvl * 10));
     if (boss.bossType === 'titan') {
-      // больше HP
       drops.push(new Pickup(boss.x - 20, boss.y, 'hp', 40));
       drops.push(new Pickup(boss.x + 40, boss.y, 'hp', 40));
       for (var i = 0; i < 2; i++) drops.push(new Pickup(boss.x + i * 14 - 7, boss.y + 20, 'xp', 25));
     } else if (boss.bossType === 'summoner') {
-      // больше XP
       for (var j = 0; j < 5; j++) drops.push(new Pickup(boss.x + j * 12 - 24, boss.y + 10, 'xp', 25));
     } else if (boss.bossType === 'mage') {
-      // больше маны
       drops.push(new Pickup(boss.x - 20, boss.y, 'mana', 50));
       drops.push(new Pickup(boss.x + 30, boss.y, 'mana', 50));
       for (var k = 0; k < 3; k++) drops.push(new Pickup(boss.x + k * 12 - 12, boss.y + 20, 'xp', 25));
     } else {
-      // devourer — универсальный
       for (var d = 0; d < 3; d++) drops.push(new Pickup(boss.x + d * 14 - 14, boss.y + 10, 'xp', 30));
+    }
+    // кровавая луна — дублируем
+    if (mul > 1) {
+      var extra = [];
+      for (var e = 0; e < drops.length; e++) {
+        var orig = drops[e];
+        extra.push(new Pickup(orig.x + (Math.random() - 0.5) * 40, orig.y + (Math.random() - 0.5) * 40, orig.type, Math.round(orig.value * 0.6)));
+      }
+      drops = drops.concat(extra);
     }
     return drops;
   },
@@ -1081,7 +1293,8 @@ var Game = {
     Audio2.enemyDie();
     this.kills++;
     var baseScore = Math.round(e.xp * 10 * (1 + this.wave * 0.06));
-    this.score += e.isElite ? Math.round(baseScore * 1.8) : baseScore;
+    if (e.isElite) baseScore = Math.round(baseScore * 1.8);
+    this.score += baseScore * this.bloodMoonScoreMul;
     this.comboCount++;
     this.comboTimer = 2.5;
     if (this.comboCount > 0 && this.comboCount % 5 === 0) {
@@ -1109,7 +1322,6 @@ var Game = {
 
     var roll = Math.random();
     if (e.isElite) {
-      // элитные дают больше
       this.pickups.push(new Pickup(e.x, e.y, 'hp', 25));
       this.pickups.push(new Pickup(e.x + 12, e.y, 'mana', 25));
       this.pickups.push(new Pickup(e.x - 12, e.y, 'xp', e.xp));
@@ -1119,6 +1331,10 @@ var Game = {
       else if (roll < 0.80) this.pickups.push(new Pickup(e.x, e.y, 'xp', e.xp));
     }
     if (e.type === 'brute' && !e.isElite) this.pickups.push(new Pickup(e.x + 14, e.y, 'xp', e.xp));
+    // кровавая луна — доп дроп
+    if (this.bloodMoonActive && Math.random() < 0.5) {
+      this.pickups.push(new Pickup(e.x + (Math.random() - 0.5) * 30, e.y + (Math.random() - 0.5) * 30, 'xp', Math.round(e.xp * 0.7)));
+    }
   },
 
   spawnDamageText: function (x, y, val, crit, color) {
@@ -1143,16 +1359,21 @@ var Game = {
   updateSpellButtons: function () {
     var p = this.player;
     if (!p) return;
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < 4; i++) {
       var btn = this.spellBtns[i];
       if (!btn) continue;
       var spell = SPELLS[i];
-      var total = spell.cooldown * p.cooldownMul;
+      var total = spell.cooldown * p.cooldownMul * (p.spellCdMod ? p.spellCdMod[i] : 1);
       var frac = total > 0 ? Utils.clamp(p.cd[i] / total, 0, 1) : 0;
       var mask = btn.querySelector('.cd-mask');
       if (mask) mask.style.transform = 'scaleY(' + frac + ')';
-      if (p.mana < spell.cost) btn.classList.add('locked');
+      var cost = Math.round(spell.cost * (p.spellCostMod ? p.spellCostMod[i] : 1));
+      var locked = p.mana < cost || (p.spellDisabled && p.spellDisabled[i]);
+      if (locked) btn.classList.add('locked');
       else btn.classList.remove('locked');
+      // обновить текст стоимости
+      var costEl = btn.querySelector('.cost');
+      if (costEl) costEl.textContent = cost;
     }
   },
 
@@ -1161,7 +1382,7 @@ var Game = {
     ctx.fillStyle = '#0a0714';
     ctx.fillRect(0, 0, W, H);
 
-    if (this.state === 'menu' || this.state === 'book' || !this.player) {
+    if (this.state === 'menu' || this.state === 'book' || this.state === 'class' || !this.player) {
       this.drawNebula(ctx, 0.4);
       this.drawStars(ctx, 0.4);
       this.drawMenuBg(ctx);
@@ -1183,6 +1404,9 @@ var Game = {
     var viewB = this.camY + H + 50;
 
     for (var i = 0; i < this.pickups.length; i++) this.pickups[i].draw(ctx);
+
+    // метеоры (под врагами, чтобы показать прицельную зону)
+    this.drawMeteors(ctx);
 
     for (var j = 0; j < this.projectiles.length; j++) {
       var pr = this.projectiles[j];
@@ -1235,6 +1459,7 @@ var Game = {
     ctx.restore();
 
     this.drawVignette(ctx);
+    this.drawBloodMoonOverlay(ctx);
 
     if (this.screenFlash > 0) {
       ctx.save();
@@ -1248,10 +1473,99 @@ var Game = {
     this.drawCombo(ctx);
   },
 
+  drawMeteors: function (ctx) {
+    for (var i = 0; i < this.meteors.length; i++) {
+      var mt = this.meteors[i];
+      if (mt.impacted) continue;
+      var progress = 1 - mt.delay / mt.maxDelay;
+      // прицельная зона
+      ctx.save();
+      ctx.globalAlpha = 0.3 + progress * 0.6;
+      ctx.strokeStyle = '#ff7a3c';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 10]);
+      ctx.lineDashOffset = -performance.now() * 0.03;
+      ctx.beginPath();
+      ctx.arc(mt.x, mt.y, mt.radius, 0, 6.2832);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.3 + progress * 0.5;
+      ctx.fillStyle = 'rgba(255,100,40,0.25)';
+      ctx.beginPath();
+      ctx.arc(mt.x, mt.y, mt.radius * Math.max(0.2, progress), 0, 6.2832);
+      ctx.fill();
+      ctx.restore();
+
+      // падающий метеор
+      if (!this.lowQuality) {
+        var fallY = mt.y - (1 - progress) * 900;
+        var tg = ctx.createRadialGradient(mt.x, fallY, 0, mt.x, fallY, 50);
+        tg.addColorStop(0, '#fff');
+        tg.addColorStop(0.3, '#ffd166');
+        tg.addColorStop(0.7, '#ff7a3c');
+        tg.addColorStop(1, 'rgba(255,60,20,0)');
+        ctx.fillStyle = tg;
+        ctx.beginPath();
+        ctx.arc(mt.x, fallY, 50, 0, 6.2832);
+        ctx.fill();
+        // хвост
+        var tailGrad = ctx.createLinearGradient(mt.x, fallY - 180, mt.x, fallY);
+        tailGrad.addColorStop(0, 'rgba(255,150,60,0)');
+        tailGrad.addColorStop(1, 'rgba(255,180,80,0.85)');
+        ctx.strokeStyle = tailGrad;
+        ctx.lineWidth = 16;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(mt.x, fallY - 180);
+        ctx.lineTo(mt.x, fallY);
+        ctx.stroke();
+      }
+    }
+  },
+
   drawVignette: function (ctx) {
     if (this.vignetteCanvas) {
       ctx.drawImage(this.vignetteCanvas, 0, 0);
     }
+  },
+
+  drawBloodMoonOverlay: function (ctx) {
+    if (!this.bloodMoonActive) return;
+    // красный туман по краям
+    var g = ctx.createRadialGradient(this.W / 2, this.H / 2, this.H * 0.2,
+      this.W / 2, this.H / 2, Math.max(this.W, this.H) * 0.75);
+    g.addColorStop(0, 'rgba(180,20,20,0)');
+    g.addColorStop(0.6, 'rgba(180,20,20,0.10)');
+    g.addColorStop(1, 'rgba(120,10,10,0.42)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, this.W, this.H);
+    // луна в правом верхнем углу
+    var mx = this.W - 70;
+    var my = 100;
+    ctx.save();
+    ctx.globalAlpha = 0.75;
+    var moonG = ctx.createRadialGradient(mx, my, 0, mx, my, 40);
+    moonG.addColorStop(0, '#ff3333');
+    moonG.addColorStop(0.6, '#8a1010');
+    moonG.addColorStop(1, 'rgba(120,10,10,0)');
+    ctx.fillStyle = moonG;
+    ctx.beginPath();
+    ctx.arc(mx, my, 40, 0, 6.2832);
+    ctx.fill();
+    ctx.globalAlpha = 0.6;
+    ctx.fillStyle = '#a01c1c';
+    ctx.beginPath();
+    ctx.arc(mx, my, 22, 0, 6.2832);
+    ctx.fill();
+    // кратеры
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = '#5a0808';
+    ctx.beginPath();
+    ctx.arc(mx - 6, my - 4, 4, 0, 6.2832);
+    ctx.arc(mx + 7, my + 3, 3, 0, 6.2832);
+    ctx.arc(mx - 2, my + 8, 2.5, 0, 6.2832);
+    ctx.fill();
+    ctx.restore();
   },
 
   drawNebula: function (ctx, parallax) {
@@ -1279,7 +1593,6 @@ var Game = {
       var s = this.stars[i];
       var sx = ((s.x + px) % this.W + this.W) % this.W;
       var sy = ((s.y + py) % this.H + this.H) % this.H;
-      // мягкое мерцание — уменьшенная амплитуда, чтобы не раздражало
       var twinkle = this.lowQuality ? 0.75 : (0.6 + Math.abs(Math.sin(t * s.speed + s.phase)) * 0.4);
       ctx.globalAlpha = twinkle * 0.75;
       ctx.fillStyle = s.color;
@@ -1438,10 +1751,8 @@ var Game = {
     ctx.fill();
     var frac = Utils.clamp(boss.hp / boss.maxHp, 0, 1);
     var grad = ctx.createLinearGradient(bx, 0, bx + bw, 0);
-    var c1 = boss.bossColor;
-    // конвертим в чуть более тёмные оттенки
-    grad.addColorStop(0, c1);
-    grad.addColorStop(0.5, c1);
+    grad.addColorStop(0, boss.bossColor);
+    grad.addColorStop(0.5, boss.bossColor);
     grad.addColorStop(1, boss.bossColorDark);
     ctx.fillStyle = grad;
     if (frac > 0) {
@@ -1452,13 +1763,11 @@ var Game = {
     ctx.lineWidth = 1.5;
     this.roundRect(ctx, bx, by, bw, bh, 11);
     ctx.stroke();
-    // имя и тип
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 12px -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(boss.bossName + ' · Фаза ' + boss.phase, this.W / 2, by + bh / 2 + 0.5);
-    // маркеры фаз
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
     ctx.lineWidth = 1;
     var marks = [0.5, 0.25];
@@ -1534,12 +1843,35 @@ var Game = {
 
     this.drawBossBar(ctx);
 
+    // Класс мага — рядом с уровнем
+    if (this.mageClass) {
+      var cls = null;
+      for (var ci = 0; ci < MAGE_CLASSES.length; ci++) {
+        if (MAGE_CLASSES[ci].id === this.mageClass) { cls = MAGE_CLASSES[ci]; break; }
+      }
+      if (cls) {
+        ctx.fillStyle = 'rgba(10,7,20,0.78)';
+        this.roundRect(ctx, this.W - leftPad - 108, topPad + 56, 108, 22, 11); ctx.fill();
+        ctx.strokeStyle = cls.color + 'aa';
+        this.roundRect(ctx, this.W - leftPad - 108, topPad + 56, 108, 22, 11); ctx.stroke();
+        ctx.fillStyle = cls.color;
+        ctx.textAlign = 'center';
+        ctx.fillText(cls.icon + ' ' + cls.name, this.W - leftPad - 54, topPad + 62);
+      }
+    }
+
     ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
     ctx.font = 'bold 11px -apple-system, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.4)';
     ctx.fillText('✦ ' + Utils.formatNum(this.score), leftPad, this.H - 12);
 
-    if (this.waveActive && !this.bossActive) {
+    if (this.bloodMoonActive) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.font = 'bold 13px -apple-system, sans-serif';
+      ctx.fillStyle = '#ff6666';
+      ctx.fillText('🌑 КРОВАВАЯ ЛУНА · очки x3', this.W / 2, this.H - 30);
+    } else if (this.waveActive && !this.bossActive) {
       var remaining = this.enemies.length + this.spawnQueue.length;
       ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
       ctx.font = 'bold 12px -apple-system, sans-serif';
@@ -1584,7 +1916,6 @@ var Game = {
     if (dt > 0.25) dt = 0.25;
     if (dt < 0) dt = 0;
 
-    // адаптивное качество с гистерезисом (устраняет мерцание фона)
     if (this.state === 'playing') {
       this.frameTimes.push(dt * 1000);
       if (this.frameTimes.length > 30) this.frameTimes.shift();

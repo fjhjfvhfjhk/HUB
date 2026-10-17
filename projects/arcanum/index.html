@@ -23,12 +23,22 @@
       <p class="subtitle">Ты — последний маг академии.<br>Волны тьмы идут на тебя.</p>
       <button class="btn btn-primary" id="btn-play">НАЧАТЬ БОЙ</button>
       <button class="btn btn-book" id="btn-book">📖 КНИГА ДУШ</button>
+      <button class="btn btn-ghost" id="btn-fullscreen">🖥 ПОЛНЫЙ ЭКРАН</button>
       <div class="hint">
         <div class="hint-row"><span class="dot blue"></span><b>Левая половина</b> — палец двигает мага</div>
         <div class="hint-row"><span class="dot gold"></span><b>Правая половина</b> — целься и держи, чтобы стрелять</div>
         <div class="hint-row"><span class="dot violet"></span><b>WASD</b> — движение на клавиатуре</div>
       </div>
       <div class="best">Рекорд: <span id="best-score">0</span> · Души: <span id="menu-souls">0</span> ✦</div>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-class">
+    <div class="panel panel-wide">
+      <h2 class="title-sm">ВЫБЕРИ СТИХИЮ</h2>
+      <p class="subtitle small">Каждый класс меняет стиль игры</p>
+      <div class="class-cards" id="class-list"></div>
+      <button class="btn btn-ghost" id="btn-class-back">НАЗАД</button>
     </div>
   </div>
 
@@ -44,6 +54,7 @@
     <div class="panel">
       <h2 class="title-sm">ПАУЗА</h2>
       <button class="btn btn-primary" id="btn-resume">ПРОДОЛЖИТЬ</button>
+      <button class="btn btn-ghost" id="btn-fullscreen-2">🖥 ПОЛНЫЙ ЭКРАН</button>
       <button class="btn btn-ghost" id="btn-quit">В МЕНЮ</button>
     </div>
   </div>
@@ -82,7 +93,7 @@
         </div>
         <div class="book-nav">
           <button class="book-nav-btn" id="book-prev">←</button>
-          <span class="book-page-num" id="book-page-num">1 / 4</span>
+          <span class="book-page-num" id="book-page-num">1 / 2</span>
           <button class="book-nav-btn" id="book-next">→</button>
         </div>
       </div>
@@ -94,6 +105,7 @@
     <button class="spell-btn" id="btn-spell-0"><span class="icon">❄</span><span class="cost">28</span><span class="cd-mask"></span></button>
     <button class="spell-btn" id="btn-spell-1"><span class="icon">🔥</span><span class="cost">18</span><span class="cd-mask"></span></button>
     <button class="spell-btn" id="btn-spell-2"><span class="icon">⚡</span><span class="cost">32</span><span class="cd-mask"></span></button>
+    <button class="spell-btn" id="btn-spell-3"><span class="icon">☄</span><span class="cost">40</span><span class="cd-mask"></span></button>
   </div>
 </div>
 

@@ -1,5 +1,5 @@
 /* ============================================================
-   АРКАНУМ v4 — карточки-портрет, книга-гримуар, оптимизация
+   АРКАНУМ v5 — классы магов, метеор, кровавая луна, fullscreen
    ============================================================ */
 
 :root{--bg:#0a0714;--panel:#150f26;--panel-2:#1d1535;--border:#3a2a63;--text:#e8e2ff;--muted:#9d92c4;--gold:#ffc857;--blue:#4d9dff;--violet:#b56bff;--red:#ff5b6e;--green:#4ce39a}
@@ -10,7 +10,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .screen{position:absolute;top:0;left:0;right:0;bottom:0;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(8,5,18,0.96);z-index:10;overflow:hidden}
 .screen.active{display:flex}
 .panel{width:100%;max-width:380px;background:linear-gradient(165deg,var(--panel-2),var(--panel));border:1px solid var(--border);border-radius:22px;padding:26px 22px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.6);max-height:92vh;overflow-y:auto}
-.panel-wide{max-width:500px}
+.panel-wide{max-width:480px}
 .rune-row{font-size:18px;letter-spacing:10px;color:var(--violet);margin-bottom:6px;opacity:.8}
 .title{font-size:38px;font-weight:900;letter-spacing:5px;color:#fff;margin-bottom:12px;text-shadow:0 0 18px rgba(181,107,255,.7)}
 .title-sm{font-size:24px;font-weight:800;letter-spacing:3px;color:var(--violet);margin-bottom:8px}
@@ -36,7 +36,24 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .stat span{display:block;font-size:11px;color:var(--muted);letter-spacing:1px;margin-bottom:6px}
 .stat b{display:block;font-size:22px;font-weight:900;color:var(--gold)}
 
-/* ============ CARD FLIP (портретные карты) ============ */
+/* ============ ВЫБОР КЛАССА ============ */
+.class-cards{display:flex;flex-direction:column;gap:10px;margin-bottom:6px}
+.class-card{padding:14px 16px;border-radius:14px;background:rgba(255,255,255,.04);border:2px solid var(--border);cursor:pointer;text-align:left;transition:all .15s;display:flex;align-items:center;gap:14px}
+.class-card:active{transform:scale(.97)}
+.class-card-icon{font-size:32px;flex:0 0 auto;line-height:1}
+.class-card-body{flex:1;min-width:0}
+.class-card-name{font-size:16px;font-weight:800;margin-bottom:4px}
+.class-card-desc{font-size:12px;color:var(--muted);line-height:1.4}
+.class-card.pyromancer{border-color:rgba(255,120,60,.4)}
+.class-card.pyromancer:active{border-color:#ff7a3c;background:rgba(255,120,60,.1)}
+.class-card.cryomancer{border-color:rgba(127,220,255,.4)}
+.class-card.cryomancer:active{border-color:#7fdcff;background:rgba(127,220,255,.1)}
+.class-card.electromancer{border-color:rgba(158,232,255,.4)}
+.class-card.electromancer:active{border-color:#9ee8ff;background:rgba(158,232,255,.1)}
+.class-card.classic{border-color:rgba(157,146,196,.4)}
+.class-card.classic:active{border-color:#9d92c4;background:rgba(157,146,196,.1)}
+
+/* ============ CARD FLIP ============ */
 .cards{display:flex;flex-wrap:nowrap;gap:12px;margin-top:14px;justify-content:center;align-items:stretch;overflow-x:auto;overflow-y:visible;padding:6px 4px 12px;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
 .cards::-webkit-scrollbar{height:4px}
 .cards::-webkit-scrollbar-thumb{background:rgba(181,107,255,.4);border-radius:2px}
@@ -80,17 +97,28 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .spell-btn .cost{font-size:9px;font-weight:800;letter-spacing:.5px;color:var(--gold);margin-top:1px}
 .spell-btn .cd-mask{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.72);transform-origin:bottom;transform:scaleY(0);pointer-events:none}
 .spell-btn.locked{opacity:.35;filter:grayscale(1)}
-#btn-spell-0{right:14px;bottom:190px;border-color:rgba(77,157,255,.55)}
-#btn-spell-1{right:90px;bottom:150px;border-color:rgba(255,120,60,.55)}
-#btn-spell-2{right:14px;bottom:110px;border-color:rgba(120,220,255,.55)}
+
+/* 2x2 сетка кнопок */
+#btn-spell-0{right:14px;bottom:210px;border-color:rgba(77,157,255,.55)}
+#btn-spell-1{right:90px;bottom:210px;border-color:rgba(255,120,60,.55)}
+#btn-spell-2{right:14px;bottom:130px;border-color:rgba(120,220,255,.55)}
+#btn-spell-3{right:90px;bottom:130px;border-color:rgba(255,150,60,.55)}
+
 #btn-pause{position:absolute;pointer-events:auto;top:14px;right:14px;width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.15);background:rgba(20,14,40,.65);color:var(--muted);font-size:16px;display:flex;align-items:center;justify-content:center;touch-action:none;font-family:inherit}
 #btn-pause:active{transform:scale(.92)}
+
+@media (max-height:640px){
+  .spell-btn{width:60px;height:60px;font-size:22px}
+  #btn-spell-0{right:12px;bottom:180px}
+  #btn-spell-1{right:80px;bottom:180px}
+  #btn-spell-2{right:12px;bottom:110px}
+  #btn-spell-3{right:80px;bottom:110px}
+}
 
 /* ============ BOOK ============ */
 #screen-book{padding:0}
 .book{width:100%;height:100%;max-width:520px;max-height:100%;position:relative;display:flex;align-items:center;justify-content:center;padding:16px;padding-top:calc(16px + env(safe-area-inset-top));padding-bottom:calc(16px + env(safe-area-inset-bottom))}
 
-/* --- Cover --- */
 .book-cover{position:absolute;inset:16px;padding-top:calc(16px + env(safe-area-inset-top));padding-bottom:calc(16px + env(safe-area-inset-bottom));background:linear-gradient(145deg,#3a1e10 0%,#241208 55%,#1a0d05 100%);border:3px solid #6a4520;border-radius:14px 22px 22px 14px;box-shadow:inset 0 0 80px rgba(0,0,0,.7),inset 0 0 20px rgba(200,140,60,.1),0 22px 70px rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:opacity .3s,transform .3s;overflow:hidden}
 .book-cover::before{content:'';position:absolute;inset:14px;border:2px dashed rgba(200,160,80,.22);border-radius:8px;pointer-events:none}
 .book-cover::after{content:'';position:absolute;left:0;top:0;bottom:0;width:14px;background:linear-gradient(90deg,rgba(0,0,0,.6),transparent);pointer-events:none}
@@ -101,7 +129,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .book-cover-hint{position:absolute;bottom:22px;color:rgba(232,200,120,.55);font-size:12px;letter-spacing:2px;animation:hintPulse 2.2s ease-in-out infinite}
 @keyframes hintPulse{0%,100%{opacity:.5}50%{opacity:1}}
 
-/* --- Content --- */
 .book-content{position:absolute;inset:16px;padding-top:calc(16px + env(safe-area-inset-top));padding-bottom:calc(16px + env(safe-area-inset-bottom));background:linear-gradient(145deg,#3a1e10 0%,#2a1408 100%);border:2px solid #6a4520;border-radius:14px 22px 22px 14px;box-shadow:inset 0 0 60px rgba(0,0,0,.6),0 22px 70px rgba(0,0,0,.85);display:none;flex-direction:column;overflow:hidden;transition:opacity .3s}
 .book-content.visible{display:flex}
 .book-close{position:absolute;top:8px;right:8px;width:34px;height:34px;border:1px solid rgba(255,200,87,.4);background:rgba(0,0,0,.5);border-radius:50%;color:#ffe8a8;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit;z-index:3}
@@ -134,7 +161,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .book-nav-btn:disabled{opacity:.3;cursor:not-allowed}
 .book-page-num{color:#a88040;font-size:12px;font-weight:700;letter-spacing:1px}
 
-/* page turn animations */
 .book-page.slide-left-out{animation:slideLeftOut .2s ease-out forwards}
 @keyframes slideLeftOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(-35%)}}
 .book-page.slide-right-out{animation:slideRightOut .2s ease-out forwards}
