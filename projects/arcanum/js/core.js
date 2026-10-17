@@ -1,5 +1,5 @@
 /* ============================================================
-   CORE — базовые утилиты, хранилище, звук, spatial grid
+   CORE v7 — утилиты, звук, кеш спрайтов
    ============================================================ */
 
 window.onerror = function (msg, src, line, col, err) {
@@ -45,6 +45,73 @@ var Utils = {
     return String(Math.floor(n));
   },
   vibrate: function (ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { } }
+};
+
+/* ============================================================
+   SPRITES — предрендеренные спрайты (кеш)
+   Огромный буст производительности: вместо createRadialGradient
+   каждый кадр — один drawImage из кеша
+   ============================================================ */
+var Sprites = {
+  _cache: {},
+  _size: 64,
+
+  glow: function (hexColor) {
+    var key = 'glow_' + hexColor;
+    if (this._cache[key]) return this._cache[key];
+    var size = this._size;
+    var c = document.createElement('canvas');
+    c.width = c.height = size;
+    var ctx = c.getContext('2d');
+    var n = parseInt(hexColor.replace('#', ''), 16);
+    var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    var grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    grad.addColorStop(0, 'rgba(' + r + ',' + g + ',' + b + ',1)');
+    grad.addColorStop(0.35, 'rgba(' + r + ',' + g + ',' + b + ',0.55)');
+    grad.addColorStop(0.7, 'rgba(' + r + ',' + g + ',' + b + ',0.15)');
+    grad.addColorStop(1, 'rgba(' + r + ',' + g + ',' + b + ',0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    this._cache[key] = c;
+    return c;
+  },
+
+  drawGlow: function (ctx, x, y, radius, hexColor, alpha) {
+    var sprite = this.glow(hexColor);
+    var prevAlpha = ctx.globalAlpha;
+    ctx.globalAlpha = alpha === undefined ? 1 : alpha;
+    ctx.drawImage(sprite, x - radius, y - radius, radius * 2, radius * 2);
+    ctx.globalAlpha = prevAlpha;
+  },
+
+  /* Мягкий "дым" — для poison cloud */
+  soft: function (hexColor) {
+    var key = 'soft_' + hexColor;
+    if (this._cache[key]) return this._cache[key];
+    var size = 128;
+    var c = document.createElement('canvas');
+    c.width = c.height = size;
+    var ctx = c.getContext('2d');
+    var n = parseInt(hexColor.replace('#', ''), 16);
+    var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    var grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    grad.addColorStop(0, 'rgba(' + r + ',' + g + ',' + b + ',0.8)');
+    grad.addColorStop(0.4, 'rgba(' + r + ',' + g + ',' + b + ',0.35)');
+    grad.addColorStop(0.8, 'rgba(' + r + ',' + g + ',' + b + ',0.08)');
+    grad.addColorStop(1, 'rgba(' + r + ',' + g + ',' + b + ',0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    this._cache[key] = c;
+    return c;
+  },
+
+  drawSoft: function (ctx, x, y, radius, hexColor, alpha) {
+    var sprite = this.soft(hexColor);
+    var prevAlpha = ctx.globalAlpha;
+    ctx.globalAlpha = alpha === undefined ? 1 : alpha;
+    ctx.drawImage(sprite, x - radius, y - radius, radius * 2, radius * 2);
+    ctx.globalAlpha = prevAlpha;
+  }
 };
 
 var Audio2 = {
@@ -114,17 +181,11 @@ var Audio2 = {
   buy:        function () { this._tone(700, 0.10, 'sine', 0.12, 1050); }
 };
 
-/* ============================================================
-   SpatialGrid — пространственный хеш для быстрой коллизии
-   ============================================================ */
 function SpatialGrid(cellSize) {
   this.cellSize = cellSize || 120;
   this.cells = {};
-  this._keyBuf = '';
 }
-SpatialGrid.prototype.clear = function () {
-  this.cells = {};
-};
+SpatialGrid.prototype.clear = function () { this.cells = {}; };
 SpatialGrid.prototype.rebuild = function (entities) {
   this.cells = {};
   var cs = this.cellSize;

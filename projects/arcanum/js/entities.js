@@ -1,5 +1,5 @@
 /* ============================================================
-   ENTITIES v6 — invuln, poison, slow projectile
+   ENTITIES v7 — кеш спрайтов, additive blend
    ============================================================ */
 
 function Particle(x, y, vx, vy, life, color, size) {
@@ -7,6 +7,7 @@ function Particle(x, y, vx, vy, life, color, size) {
   this.life = life; this.maxLife = life;
   this.color = color; this.size = size || 3; this.dead = false;
   this.drag = 0.94;
+  this.additive = false;
 }
 Particle.prototype.update = function (dt) {
   this.x += this.vx * dt; this.y += this.vy * dt;
@@ -19,9 +20,11 @@ Particle.prototype.draw = function (c) {
   var a = this.life / this.maxLife;
   if (a > 1) a = 1;
   c.globalAlpha = a;
+  if (this.additive) c.globalCompositeOperation = 'lighter';
   c.fillStyle = this.color;
   var s = this.size * (0.4 + a * 0.6);
   c.beginPath(); c.arc(this.x, this.y, s, 0, 6.2832); c.fill();
+  if (this.additive) c.globalCompositeOperation = 'source-over';
   c.globalAlpha = 1;
 };
 
@@ -29,6 +32,7 @@ function RingParticle(x, y, maxR, life, color, width) {
   this.x = x; this.y = y; this.r = 4; this.maxR = maxR;
   this.life = life; this.maxLife = life;
   this.color = color; this.width = width || 3; this.dead = false;
+  this.additive = false;
 }
 RingParticle.prototype.update = function (dt) {
   this.life -= dt;
@@ -40,9 +44,11 @@ RingParticle.prototype.draw = function (c) {
   var a = this.life / this.maxLife;
   if (a > 1) a = 1;
   c.globalAlpha = a * 0.85;
+  if (this.additive) c.globalCompositeOperation = 'lighter';
   c.strokeStyle = this.color;
   c.lineWidth = this.width * a + 0.5;
   c.beginPath(); c.arc(this.x, this.y, this.r, 0, 6.2832); c.stroke();
+  if (this.additive) c.globalCompositeOperation = 'source-over';
   c.globalAlpha = 1;
 };
 
@@ -95,16 +101,19 @@ Projectile.prototype.draw = function (c) {
     var s = 1 + Math.sin(this.pulse) * 0.12;
     c.save();
     c.translate(this.x, this.y);
-    var g = c.createRadialGradient(0, 0, 0, 0, 0, this.radius * 3.2 * s);
-    g.addColorStop(0, 'rgba(255,220,120,0.85)');
-    g.addColorStop(0.35, 'rgba(255,140,50,0.55)');
-    g.addColorStop(1, 'rgba(255,80,20,0)');
-    c.fillStyle = g;
-    c.beginPath(); c.arc(0, 0, this.radius * 3.2 * s, 0, 6.2832); c.fill();
+
+    // Внешнее свечение из кеша — БЕЗ создания градиента
+    c.globalCompositeOperation = 'lighter';
+    Sprites.drawGlow(c, 0, 0, this.radius * 3.2 * s, '#ff7a3c', 0.85);
+    c.globalCompositeOperation = 'source-over';
+
+    // Ядро
     c.fillStyle = '#fff7e0';
     c.beginPath(); c.arc(0, 0, this.radius * 0.6 * s, 0, 6.2832); c.fill();
     c.fillStyle = '#ffd166';
     c.beginPath(); c.arc(0, 0, this.radius * 0.95, 0, 6.2832); c.fill();
+
+    // Вращающиеся искры
     c.rotate(this.pulse * 0.5);
     c.fillStyle = '#fff';
     for (var i = 0; i < 3; i++) {
@@ -118,12 +127,9 @@ Projectile.prototype.draw = function (c) {
     var sf = 1 + Math.sin(this.pulse) * 0.1;
     c.save();
     c.translate(this.x, this.y);
-    var gf = c.createRadialGradient(0, 0, 0, 0, 0, this.radius * 2.8 * sf);
-    gf.addColorStop(0, 'rgba(180,240,255,0.9)');
-    gf.addColorStop(0.5, 'rgba(120,200,255,0.5)');
-    gf.addColorStop(1, 'rgba(80,180,255,0)');
-    c.fillStyle = gf;
-    c.beginPath(); c.arc(0, 0, this.radius * 2.8 * sf, 0, 6.2832); c.fill();
+    c.globalCompositeOperation = 'lighter';
+    Sprites.drawGlow(c, 0, 0, this.radius * 2.8 * sf, '#a0e0ff', 0.85);
+    c.globalCompositeOperation = 'source-over';
     c.fillStyle = '#e0f4ff';
     c.beginPath(); c.arc(0, 0, this.radius * 0.7, 0, 6.2832); c.fill();
     c.rotate(this.pulse * 0.8);
@@ -136,10 +142,18 @@ Projectile.prototype.draw = function (c) {
     c.restore();
     return;
   }
+
+  // Обычная "искра"
+  c.save();
+  c.translate(this.x, this.y);
+  c.globalCompositeOperation = 'lighter';
+  Sprites.drawGlow(c, 0, 0, this.radius * 2, this.color, 0.7);
+  c.globalCompositeOperation = 'source-over';
   c.fillStyle = this.color;
-  c.beginPath(); c.arc(this.x, this.y, this.radius, 0, 6.2832); c.fill();
+  c.beginPath(); c.arc(0, 0, this.radius, 0, 6.2832); c.fill();
   c.fillStyle = '#ffffff';
-  c.beginPath(); c.arc(this.x, this.y, this.radius * 0.42, 0, 6.2832); c.fill();
+  c.beginPath(); c.arc(0, 0, this.radius * 0.42, 0, 6.2832); c.fill();
+  c.restore();
 };
 
 function EnemyProjectile(x, y, vx, vy, damage, opts) {
@@ -162,11 +176,9 @@ EnemyProjectile.prototype.draw = function (c) {
   var s = 1 + Math.sin(this.pulse) * 0.15;
   c.save();
   c.translate(this.x, this.y);
-  var g = c.createRadialGradient(0, 0, 0, 0, 0, this.radius * 2.4 * s);
-  g.addColorStop(0, this.color);
-  g.addColorStop(1, 'rgba(255,50,80,0)');
-  c.fillStyle = g;
-  c.beginPath(); c.arc(0, 0, this.radius * 2.4 * s, 0, 6.2832); c.fill();
+  c.globalCompositeOperation = 'lighter';
+  Sprites.drawGlow(c, 0, 0, this.radius * 2.4 * s, this.color, 0.9);
+  c.globalCompositeOperation = 'source-over';
   c.fillStyle = this.color;
   c.beginPath(); c.arc(0, 0, this.radius, 0, 6.2832); c.fill();
   c.fillStyle = '#fff';
@@ -200,6 +212,10 @@ Pickup.prototype.draw = function (c) {
   else { col = '#ffc857'; sym = '◆'; }
   c.save();
   c.globalAlpha = this.life < 2 ? (0.3 + 0.7 * Math.abs(Math.sin(this.life * 10))) : 1;
+  // Свечение из кеша
+  c.globalCompositeOperation = 'lighter';
+  Sprites.drawGlow(c, this.x, this.y + bob, this.r * 2.4, col, 0.4);
+  c.globalCompositeOperation = 'source-over';
   c.fillStyle = col;
   c.beginPath(); c.arc(this.x, this.y + bob, this.r, 0, 6.2832); c.fill();
   c.fillStyle = '#0a0714';
@@ -209,7 +225,6 @@ Pickup.prototype.draw = function (c) {
   c.restore();
 };
 
-/* ================= ВРАГИ ================= */
 function Enemy(x, y, typeKey, wave, isElite) {
   var base = ENEMY_TYPES[typeKey];
   this.type = typeKey; this.base = base;
@@ -347,12 +362,12 @@ Enemy.prototype.draw = function (c) {
   var perfMode = (typeof Game !== 'undefined' && Game.performanceMode);
 
   if (this.isElite && !perfMode) {
+    c.save();
+    c.globalCompositeOperation = 'lighter';
     var pulse = 0.85 + Math.sin(this.t * 4) * 0.15;
-    var eg = c.createRadialGradient(this.x, this.y, r * 0.7, this.x, this.y, r * 2.1 * pulse);
-    eg.addColorStop(0, 'rgba(255,200,87,0.25)');
-    eg.addColorStop(1, 'rgba(255,200,87,0)');
-    c.fillStyle = eg;
-    c.beginPath(); c.arc(this.x, this.y, r * 2.1 * pulse, 0, 6.2832); c.fill();
+    Sprites.drawGlow(c, this.x, this.y, r * 2.1 * pulse, '#ffc857', 0.35);
+    c.globalCompositeOperation = 'source-over';
+    c.restore();
   }
 
   c.save();
@@ -366,13 +381,12 @@ Enemy.prototype.draw = function (c) {
   }
 
   if ((this.burnTimer > 0 || this.poisonTimer > 0) && !perfMode) {
-    var auraCol = this.poisonTimer > 0 ? 'rgba(140,255,80,0.5)' : 'rgba(255,160,60,0.55)';
-    var auraEnd = this.poisonTimer > 0 ? 'rgba(60,200,20,0)' : 'rgba(255,80,20,0)';
-    var auraG = c.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 2);
-    auraG.addColorStop(0, auraCol);
-    auraG.addColorStop(1, auraEnd);
-    c.fillStyle = auraG;
-    c.beginPath(); c.arc(0, 0, r * 2, 0, 6.2832); c.fill();
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    var auraCol = this.poisonTimer > 0 ? '#4dcc30' : '#ff7a3c';
+    Sprites.drawGlow(c, 0, 0, r * 2, auraCol, 0.4);
+    c.globalCompositeOperation = 'source-over';
+    c.restore();
   }
 
   var flash = this.hitFlash > 0;
@@ -697,12 +711,12 @@ Boss.prototype.draw = function (c) {
   c.translate(this.x, this.y);
 
   if (!perfMode) {
+    c.save();
+    c.globalCompositeOperation = 'lighter';
     var pulse = 1 + Math.sin(this.t * 3) * 0.1;
-    var auraG = c.createRadialGradient(0, 0, r * 0.6, 0, 0, r * 2.4 * pulse);
-    auraG.addColorStop(0, this.hexToRgba(color, 0.35));
-    auraG.addColorStop(1, this.hexToRgba(color, 0));
-    c.fillStyle = auraG;
-    c.beginPath(); c.arc(0, 0, r * 2.4 * pulse, 0, 6.2832); c.fill();
+    Sprites.drawGlow(c, 0, 0, r * 2.4 * pulse, color, 0.35);
+    c.globalCompositeOperation = 'source-over';
+    c.restore();
   } else {
     c.globalAlpha = 0.15;
     c.fillStyle = color;
@@ -759,13 +773,12 @@ Boss.prototype.draw = function (c) {
   c.stroke();
 
   if (!perfMode) {
+    c.save();
+    c.globalCompositeOperation = 'lighter';
     var corePulse = 1 + Math.sin(this.t * 5) * 0.2;
-    var coreG = c.createRadialGradient(0, 0, 0, 0, 0, r * 0.55 * corePulse);
-    coreG.addColorStop(0, '#fff');
-    coreG.addColorStop(0.4, color);
-    coreG.addColorStop(1, this.hexToRgba(color, 0));
-    c.fillStyle = coreG;
-    c.beginPath(); c.arc(0, 0, r * 0.55 * corePulse, 0, 6.2832); c.fill();
+    Sprites.drawGlow(c, 0, 0, r * 0.8 * corePulse, color, 0.85);
+    c.globalCompositeOperation = 'source-over';
+    c.restore();
   } else {
     c.fillStyle = color;
     c.beginPath(); c.arc(0, 0, r * 0.4, 0, 6.2832); c.fill();
@@ -899,20 +912,18 @@ Player.prototype.draw = function (c) {
   var bobY = Math.sin(this.bob) * 1.8;
   var perfMode = (typeof Game !== 'undefined' && Game.performanceMode);
 
-  // Щит / неуязвимость — кольцо вокруг
+  // Щит / неуязвимость
   if (this.invulnTimer > 0) {
     c.save();
-    c.globalAlpha = 0.5 + Math.sin(performance.now() * 0.015) * 0.25;
+    c.globalCompositeOperation = 'lighter';
+    Sprites.drawGlow(c, this.x, this.y, r * 2.5, '#88ddff', 0.35);
+    c.globalCompositeOperation = 'source-over';
+    c.globalAlpha = 0.55 + Math.sin(performance.now() * 0.015) * 0.25;
     c.strokeStyle = '#88ddff';
     c.lineWidth = 3;
     c.beginPath();
     c.arc(this.x, this.y, r + 14, 0, 6.2832);
     c.stroke();
-    c.globalAlpha = 0.25;
-    c.fillStyle = '#88ddff';
-    c.beginPath();
-    c.arc(this.x, this.y, r + 14, 0, 6.2832);
-    c.fill();
     c.restore();
   }
 
@@ -928,13 +939,12 @@ Player.prototype.draw = function (c) {
   c.globalAlpha = 1;
 
   if (!perfMode) {
+    c.save();
+    c.globalCompositeOperation = 'lighter';
     var auraA = 0.22 + Math.sin(this.bob * 0.6) * 0.06;
-    var grad = c.createRadialGradient(0, 0, r * 0.5, 0, 0, r * 3.1);
-    grad.addColorStop(0, 'rgba(160,120,255,' + (auraA * 1.4) + ')');
-    grad.addColorStop(0.5, 'rgba(140,110,255,' + auraA + ')');
-    grad.addColorStop(1, 'rgba(140,110,255,0)');
-    c.fillStyle = grad;
-    c.beginPath(); c.arc(0, 0, r * 3.1, 0, 6.2832); c.fill();
+    Sprites.drawGlow(c, 0, 0, r * 3.1, '#8c6eff', auraA);
+    c.globalCompositeOperation = 'source-over';
+    c.restore();
   }
 
   var flash = this.hurtFlash > 0;
