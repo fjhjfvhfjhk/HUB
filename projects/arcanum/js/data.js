@@ -1,5 +1,5 @@
 /* ============================================================
-   DATA — редкости, улучшения, мета-прокачка, заклинания, враги
+   DATA — редкости, улучшения, мета-прокачка, заклинания, враги, боссы
    ============================================================ */
 
 var RARITIES = {
@@ -29,6 +29,50 @@ var ENEMY_TYPES = {
   brute:  { hp: 95, speed: 42, damage: 20, radius: 20, xp: 12, color: '#ff9a3c', colorDark: '#8f4d00', glyph: 'brute' },
   shade:  { hp: 55, speed: 70, damage: 14, radius: 15, xp: 8,  color: '#4de0ff', colorDark: '#136b85', glyph: 'shade' }
 };
+
+/* ============================================================
+   ТИПЫ БОССОВ
+   ============================================================ */
+var BOSS_TYPES = [
+  {
+    id: 'devourer',
+    name: 'Пожиратель Бездны',
+    color: '#ff3355',
+    colorDark: '#5a1020',
+    shape: 'octagon',
+    desc: 'Стреляет веером и делает рывки'
+  },
+  {
+    id: 'summoner',
+    name: 'Архилич',
+    color: '#b56bff',
+    colorDark: '#3a0e5e',
+    shape: 'spikes',
+    desc: 'Призывает стаи прислужников'
+  },
+  {
+    id: 'mage',
+    name: 'Безумный Маг',
+    color: '#4d9dff',
+    colorDark: '#0e2a52',
+    shape: 'star',
+    desc: 'Телепортируется и бьёт магией'
+  },
+  {
+    id: 'titan',
+    name: 'Вечный Страж',
+    color: '#ff9a3c',
+    colorDark: '#5a3010',
+    shape: 'hex',
+    desc: 'Огромный и медленный, бьёт вблизи'
+  }
+];
+
+function pickBossType(wave) {
+  // Циклический выбор: 5 волна → devourer, 10 → summoner, 15 → mage, 20 → titan, 25 → devourer...
+  var idx = Math.floor(wave / 5 - 1);
+  return BOSS_TYPES[((idx % BOSS_TYPES.length) + BOSS_TYPES.length) % BOSS_TYPES.length];
+}
 
 var UPGRADES = [
   { id: 'dmg',     icon: '🗡', name: 'Острый фокус',     base: 0.20,

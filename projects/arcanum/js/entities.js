@@ -1,5 +1,5 @@
 /* ============================================================
-   ENTITIES — частицы, снаряды, враги, босс, игрок
+   ENTITIES — частицы, снаряды, враги, боссы, игрок
    ============================================================ */
 
 function Particle(x, y, vx, vy, life, color, size) {
@@ -185,17 +185,24 @@ Pickup.prototype.draw = function (c) {
 };
 
 /* ================= ВРАГИ ================= */
-function Enemy(x, y, typeKey, wave) {
+function Enemy(x, y, typeKey, wave, isElite) {
   var base = ENEMY_TYPES[typeKey];
   this.type = typeKey; this.base = base;
   var hpScale = 1 + (wave - 1) * 0.20;
   var spScale = 1 + (wave - 1) * 0.035;
   this.maxHp = Math.round(base.hp * hpScale);
-  this.hp = this.maxHp;
   this.speed = base.speed * Math.min(spScale, 1.75);
   this.damage = base.damage * (1 + (wave - 1) * 0.10);
   this.radius = base.radius;
   this.xp = base.xp;
+  this.isElite = !!isElite;
+  if (this.isElite) {
+    this.maxHp = Math.round(this.maxHp * 2.6);
+    this.damage *= 1.6;
+    this.xp = Math.round(this.xp * 4);
+    this.radius *= 1.18;
+  }
+  this.hp = this.maxHp;
   this.x = x; this.y = y;
   this.dead = false;
   this.isBoss = false;
@@ -217,6 +224,7 @@ Enemy.prototype.applyBurn = function (dps, d) {
 };
 Enemy.prototype.knockback = function (angle, force) {
   if (this.isBoss) force *= 0.3;
+  else if (this.isElite) force *= 0.6;
   this.knockVx += Math.cos(angle) * force;
   this.knockVy += Math.sin(angle) * force;
 };
@@ -288,6 +296,17 @@ Enemy.prototype.update = function (dt, p, enemies) {
 };
 Enemy.prototype.draw = function (c) {
   var r = this.radius, b = this.base;
+
+  // элитная аура (рисуем до translate)
+  if (this.isElite) {
+    var pulse = 0.85 + Math.sin(this.t * 4) * 0.15;
+    var eg = c.createRadialGradient(this.x, this.y, r * 0.7, this.x, this.y, r * 2.1 * pulse);
+    eg.addColorStop(0, 'rgba(255,200,87,0.25)');
+    eg.addColorStop(1, 'rgba(255,200,87,0)');
+    c.fillStyle = eg;
+    c.beginPath(); c.arc(this.x, this.y, r * 2.1 * pulse, 0, 6.2832); c.fill();
+  }
+
   c.save();
   c.translate(this.x, this.y);
 
@@ -325,7 +344,7 @@ Enemy.prototype.draw = function (c) {
   }
   c.fill();
 
-  c.fillStyle = flash ? '#ffffff' : b.color;
+  c.fillStyle = flash ? '#ffffff' : (this.isElite ? '#ffc857' : b.color);
   c.globalAlpha = 0.85;
   c.beginPath(); c.arc(0, 0, r * 0.45, 0, 6.2832); c.fill();
   c.globalAlpha = 1;
@@ -339,12 +358,18 @@ Enemy.prototype.draw = function (c) {
   c.fill();
 
   if (b.glyph === 'imp') {
-    c.strokeStyle = flash ? '#fff' : b.color;
+    c.strokeStyle = flash ? '#fff' : (this.isElite ? '#ffc857' : b.color);
     c.lineWidth = 2;
     c.beginPath();
     c.moveTo(-r * 0.55, -r * 0.75); c.lineTo(-r * 0.85, -r * 1.35);
     c.moveTo(r * 0.55, -r * 0.75); c.lineTo(r * 0.85, -r * 1.35);
     c.stroke();
+  }
+
+  if (this.isElite) {
+    c.strokeStyle = 'rgba(255,200,87,0.75)';
+    c.lineWidth = 2;
+    c.beginPath(); c.arc(0, 0, r + 3, 0, 6.2832); c.stroke();
   }
 
   c.restore();
@@ -358,31 +383,60 @@ Enemy.prototype.draw = function (c) {
     if (f > 1) f = 1;
     c.fillStyle = f > 0.5 ? '#4ce39a' : (f > 0.22 ? '#ffc857' : '#ff5b6e');
     c.fillRect(hx, hy, w * f, 3.5);
+    if (this.isElite) {
+      c.fillStyle = '#ffc857';
+      c.beginPath(); c.arc(hx + w + 5, hy + 1.75, 2.2, 0, 6.2832); c.fill();
+    }
   }
 };
 
-/* ================= БОСС ================= */
-function Boss(x, y, wave) {
+/* ================= БОССЫ (4 типа) ================= */
+function Boss(x, y, wave, bossType) {
   Enemy.call(this, x, y, 'brute', wave);
   this.isBoss = true;
+  this.bossType = bossType.id;
+  this.bossName = bossType.name;
+  this.bossColor = bossType.color;
+  this.bossColorDark = bossType.colorDark;
+  this.bossShape = bossType.shape;
   this.bossLevel = Math.floor(wave / 5);
-  this.maxHp = Math.round(500 + this.bossLevel * 350);
-  this.hp = this.maxHp;
-  this.radius = 42;
-  this.speed = 32;
-  this.damage = 30 + this.bossLevel * 8;
+
+  // базовые параметры
+  this.maxHp = Math.round(420 + this.bossLevel * 320);
+  this.speed = 34;
+  this.radius = 38;
+  this.damage = 24 + this.bossLevel * 6;
   this.xp = 40 + this.bossLevel * 15;
+
+  if (this.bossType === 'titan') {
+    this.maxHp = Math.round(this.maxHp * 1.7);
+    this.speed = 22;
+    this.radius = 52;
+    this.damage = 38 + this.bossLevel * 10;
+    this.xp = Math.round(this.xp * 1.4);
+  } else if (this.bossType === 'summoner') {
+    this.maxHp = Math.round(this.maxHp * 0.85);
+    this.speed = 24;
+    this.radius = 34;
+    this.xp = Math.round(this.xp * 1.1);
+  } else if (this.bossType === 'mage') {
+    this.maxHp = Math.round(this.maxHp * 0.78);
+    this.speed = 42;
+    this.radius = 32;
+  }
+
+  this.hp = this.maxHp;
+  this.phase = 1;
   this.attackTimer = 2.5;
   this.chargeTimer = 6;
   this.chargeTime = 0;
   this.spawnTimer = 5;
-  this.phase = 1;
+  this.teleportTimer = 3;
   this.chargeDir = { x: 0, y: 0 };
-  var names = ['Пожиратель Бездны', 'Архилич', 'Бездонный Ужас', 'Вечный Страж'];
-  this.name = names[Math.min(names.length - 1, this.bossLevel - 1)];
 }
 Boss.prototype = Object.create(Enemy.prototype);
 Boss.prototype.constructor = Boss;
+
 Boss.prototype.update = function (dt, p, enemies) {
   this.t += dt;
   this.wobble += dt * 3;
@@ -400,6 +454,30 @@ Boss.prototype.update = function (dt, p, enemies) {
   }
   if (this.hitFlash > 0) this.hitFlash -= dt;
 
+  if (this.bossType === 'devourer') this.updateDevourer(dt, p);
+  else if (this.bossType === 'summoner') this.updateSummoner(dt, p);
+  else if (this.bossType === 'mage') this.updateMage(dt, p);
+  else if (this.bossType === 'titan') this.updateTitan(dt, p);
+
+  this.knockVx *= Math.pow(0.86, dt * 60);
+  this.knockVy *= Math.pow(0.86, dt * 60);
+  this.x += this.knockVx * dt;
+  this.y += this.knockVy * dt;
+
+  if (this.burnTimer > 0 && !Game.lowQuality) {
+    this._emitTimer = (this._emitTimer || 0) - dt;
+    if (this._emitTimer <= 0) {
+      this._emitTimer = 0.1;
+      Game.particles.push(new Particle(
+        this.x + (Math.random() - 0.5) * this.radius * 1.6,
+        this.y + (Math.random() - 0.5) * this.radius * 1.6,
+        (Math.random() - 0.5) * 40, -30 - Math.random() * 30,
+        0.5, '#ffb066', 3));
+    }
+  }
+};
+
+Boss.prototype.updateDevourer = function (dt, p) {
   if (this.chargeTime > 0) {
     this.chargeTime -= dt;
     this.x += this.chargeDir.x * 650 * dt;
@@ -410,19 +488,21 @@ Boss.prototype.update = function (dt, p, enemies) {
     this.x += Math.cos(ang) * spd * dt;
     this.y += Math.sin(ang) * spd * dt;
   }
-
-  this.knockVx *= Math.pow(0.86, dt * 60);
-  this.knockVy *= Math.pow(0.86, dt * 60);
-  this.x += this.knockVx * dt;
-  this.y += this.knockVy * dt;
-
   this.attackTimer -= dt;
   if (this.attackTimer <= 0) {
     var interval = this.phase >= 3 ? 1.1 : (this.phase >= 2 ? 1.7 : 2.4);
     this.attackTimer = interval;
-    this.shootAt(p);
+    var baseAngle = Math.atan2(p.y - this.y, p.x - this.x);
+    var count = this.phase >= 3 ? 5 : (this.phase >= 2 ? 4 : 3);
+    var speed = 240 + this.bossLevel * 20;
+    for (var i = 0; i < count; i++) {
+      var offset = (i - (count - 1) / 2) * 0.22;
+      var a = baseAngle + offset;
+      Game.enemyProjectiles.push(new EnemyProjectile(
+        this.x, this.y, Math.cos(a) * speed, Math.sin(a) * speed,
+        12 + this.bossLevel * 4, { radius: 8, color: this.bossColor, life: 3 }));
+    }
   }
-
   this.chargeTimer -= dt;
   if (this.chargeTimer <= 0 && this.chargeTime <= 0) {
     this.chargeTimer = this.phase >= 3 ? 4.5 : 6.5;
@@ -430,71 +510,155 @@ Boss.prototype.update = function (dt, p, enemies) {
     this.chargeDir = { x: Math.cos(ca), y: Math.sin(ca) };
     this.chargeTime = 0.65;
     if (!Game.lowQuality) {
-      for (var i = 0; i < 12; i++) {
-        var a = Math.random() * 6.2832;
-        var s = 60 + Math.random() * 90;
-        Game.particles.push(new Particle(
-          this.x, this.y,
-          Math.cos(a) * s, Math.sin(a) * s,
-          0.4, '#ff3355', 3 + Math.random() * 2));
-      }
-    }
-  }
-
-  if (this.phase >= 2) {
-    this.spawnTimer -= dt;
-    if (this.spawnTimer <= 0) {
-      this.spawnTimer = 8;
-      for (var k = 0; k < 2; k++) {
+      for (var k = 0; k < 10; k++) {
         var sa = Math.random() * 6.2832;
-        var sx = this.x + Math.cos(sa) * 70;
-        var sy = this.y + Math.sin(sa) * 70;
-        if (Game.enemies.length < 40) {
-          Game.enemies.push(new Enemy(sx, sy, 'imp', this.bossLevel * 5));
-        }
-        if (!Game.lowQuality) Game.particles.push(new RingParticle(sx, sy, 40, 0.4, '#ff5b6e', 2));
+        var ss = 60 + Math.random() * 80;
+        Game.particles.push(new Particle(this.x, this.y,
+          Math.cos(sa) * ss, Math.sin(sa) * ss, 0.4, this.bossColor, 3));
       }
     }
   }
+};
 
-  if ((this.slowTimer > 0 || this.burnTimer > 0) && !Game.lowQuality) {
-    this._emitTimer = (this._emitTimer || 0) - dt;
-    if (this._emitTimer <= 0) {
-      this._emitTimer = 0.1;
-      if (this.burnTimer > 0) {
-        Game.particles.push(new Particle(
-          this.x + (Math.random() - 0.5) * this.radius * 1.6,
-          this.y + (Math.random() - 0.5) * this.radius * 1.6,
-          (Math.random() - 0.5) * 40, -30 - Math.random() * 30,
-          0.5, '#ffb066', 3));
-      }
+Boss.prototype.updateSummoner = function (dt, p) {
+  // держит дистанцию ~280px
+  var dx = p.x - this.x;
+  var dy = p.y - this.y;
+  var d = Math.sqrt(dx * dx + dy * dy);
+  var targetDist = 280;
+  if (d > 0.01) {
+    var towards = (d - targetDist) / Math.abs(d - targetDist || 1);
+    if (d < targetDist - 40) towards = -1;
+    else if (d > targetDist + 40) towards = 1;
+    else towards = 0;
+    var spd = this.speed * this.slowFactor * (this.phase >= 3 ? 1.4 : 1);
+    this.x += (dx / d) * towards * spd * dt;
+    this.y += (dy / d) * towards * spd * dt;
+  }
+  this.attackTimer -= dt;
+  if (this.attackTimer <= 0) {
+    this.attackTimer = this.phase >= 3 ? 1.4 : 2.2;
+    var baseAngle = Math.atan2(p.y - this.y, p.x - this.x);
+    var speed = 200 + this.bossLevel * 15;
+    Game.enemyProjectiles.push(new EnemyProjectile(
+      this.x, this.y, Math.cos(baseAngle) * speed, Math.sin(baseAngle) * speed,
+      16 + this.bossLevel * 5, { radius: 11, color: this.bossColor, life: 3.5 }));
+  }
+  // призыв стаи
+  this.spawnTimer -= dt;
+  if (this.spawnTimer <= 0) {
+    this.spawnTimer = this.phase >= 3 ? 4.5 : (this.phase >= 2 ? 6 : 8);
+    var minionCount = this.phase >= 3 ? 4 : (this.phase >= 2 ? 3 : 2);
+    var minionTypes = ['imp', 'wraith', 'shade'];
+    for (var i = 0; i < minionCount; i++) {
+      if (Game.enemies.length >= Game.maxEnemies + 8) break;
+      var a = Math.random() * 6.2832;
+      var sx = this.x + Math.cos(a) * 60;
+      var sy = this.y + Math.sin(a) * 60;
+      var mt = minionTypes[Math.floor(Math.random() * minionTypes.length)];
+      Game.enemies.push(new Enemy(sx, sy, mt, this.bossLevel * 5));
+      if (!Game.lowQuality) Game.particles.push(new RingParticle(sx, sy, 40, 0.4, this.bossColor, 2));
     }
   }
 };
-Boss.prototype.shootAt = function (p) {
-  var baseAngle = Math.atan2(p.y - this.y, p.x - this.x);
-  var count = this.phase >= 3 ? 5 : (this.phase >= 2 ? 4 : 3);
-  var speed = 240 + this.bossLevel * 20;
-  for (var i = 0; i < count; i++) {
-    var offset = (i - (count - 1) / 2) * 0.22;
-    var a = baseAngle + offset;
-    Game.enemyProjectiles.push(new EnemyProjectile(
-      this.x, this.y,
-      Math.cos(a) * speed, Math.sin(a) * speed,
-      12 + this.bossLevel * 4,
-      { radius: 8, color: '#ff3355', life: 3 }));
+
+Boss.prototype.updateMage = function (dt, p) {
+  // телепортируется каждые ~3 сек
+  this.teleportTimer -= dt;
+  if (this.teleportTimer <= 0) {
+    this.teleportTimer = this.phase >= 3 ? 2.0 : (this.phase >= 2 ? 2.6 : 3.2);
+    // телепорт вокруг игрока
+    if (!Game.lowQuality) {
+      Game.particles.push(new RingParticle(this.x, this.y, 60, 0.5, this.bossColor, 3));
+    }
+    var a = Math.random() * 6.2832;
+    var r = 220 + Math.random() * 120;
+    this.x = p.x + Math.cos(a) * r;
+    this.y = p.y + Math.sin(a) * r;
+    if (!Game.lowQuality) {
+      Game.particles.push(new RingParticle(this.x, this.y, 80, 0.6, this.bossColor, 4));
+      for (var k = 0; k < 12; k++) {
+        var sa = Math.random() * 6.2832;
+        var ss = 100 + Math.random() * 120;
+        Game.particles.push(new Particle(this.x, this.y,
+          Math.cos(sa) * ss, Math.sin(sa) * ss, 0.5, this.bossColor, 3));
+      }
+    }
+  } else {
+    // медленно движется к игроку
+    var ang = Math.atan2(p.y - this.y, p.x - this.x);
+    var spd = this.speed * this.slowFactor * 0.5;
+    this.x += Math.cos(ang) * spd * dt;
+    this.y += Math.sin(ang) * spd * dt;
+  }
+  // стреляет 3 большими медленными шарами
+  this.attackTimer -= dt;
+  if (this.attackTimer <= 0) {
+    this.attackTimer = this.phase >= 3 ? 1.3 : (this.phase >= 2 ? 1.8 : 2.4);
+    var baseAngle = Math.atan2(p.y - this.y, p.x - this.x);
+    var ballCount = this.phase >= 3 ? 4 : 3;
+    var speed = 150 + this.bossLevel * 10;
+    for (var i = 0; i < ballCount; i++) {
+      var offset = (i - (ballCount - 1) / 2) * 0.35;
+      var ba = baseAngle + offset;
+      Game.enemyProjectiles.push(new EnemyProjectile(
+        this.x, this.y, Math.cos(ba) * speed, Math.sin(ba) * speed,
+        20 + this.bossLevel * 6, { radius: 14, color: this.bossColor, life: 4 }));
+    }
   }
 };
+
+Boss.prototype.updateTitan = function (dt, p) {
+  // медленно идёт к игроку
+  var ang = Math.atan2(p.y - this.y, p.x - this.x);
+  var spd = this.speed * this.slowFactor;
+  this.x += Math.cos(ang) * spd * dt;
+  this.y += Math.sin(ang) * spd * dt;
+
+  // AoE удар при приближении
+  this.attackTimer -= dt;
+  var d = Math.sqrt((p.x - this.x) * (p.x - this.x) + (p.y - this.y) * (p.y - this.y));
+  if (d < this.radius + 70 && this.attackTimer <= 0) {
+    this.attackTimer = this.phase >= 3 ? 1.8 : (this.phase >= 2 ? 2.2 : 2.8);
+    // AoE урон
+    var radius = this.radius + 90;
+    var dmg = this.damage * 1.3;
+    var dist = d;
+    if (dist < radius) {
+      var dealt = p.hurt(dmg);
+      Audio2.playerHurt();
+      Utils.vibrate(80);
+      Game.shake(12);
+      Game.spawnDamageText(p.x, p.y - p.radius - 6, dealt, false, '#ff9a3c');
+      if (p.dead) { Game.gameOver(); return; }
+    }
+    if (!Game.lowQuality) {
+      Game.particles.push(new RingParticle(this.x, this.y, radius, 0.5, this.bossColor, 5));
+      Game.particles.push(new RingParticle(this.x, this.y, radius * 0.7, 0.35, '#ffffff', 3));
+    }
+  }
+  // в 2-й и 3-й фазе наносит слабый AoE чаще
+  if (this.phase >= 2 && this.attackTimer <= 0 && d >= this.radius + 70 && d < 300) {
+    this.attackTimer = this.phase >= 3 ? 2.0 : 2.6;
+    Game.enemyProjectiles.push(new EnemyProjectile(
+      this.x, this.y, Math.cos(ang) * 180, Math.sin(ang) * 180,
+      15 + this.bossLevel * 4, { radius: 10, color: this.bossColor, life: 3 }));
+  }
+};
+
 Boss.prototype.draw = function (c) {
   var r = this.radius;
+  var color = this.bossColor;
+  var colorDark = this.bossColorDark;
+
   c.save();
   c.translate(this.x, this.y);
 
   if (!Game.lowQuality) {
     var pulse = 1 + Math.sin(this.t * 3) * 0.1;
     var auraG = c.createRadialGradient(0, 0, r * 0.6, 0, 0, r * 2.4 * pulse);
-    auraG.addColorStop(0, 'rgba(255,50,80,0.35)');
-    auraG.addColorStop(1, 'rgba(255,50,80,0)');
+    auraG.addColorStop(0, this.hexToRgba(color, 0.35));
+    auraG.addColorStop(1, this.hexToRgba(color, 0));
     c.fillStyle = auraG;
     c.beginPath(); c.arc(0, 0, r * 2.4 * pulse, 0, 6.2832); c.fill();
   }
@@ -507,62 +671,125 @@ Boss.prototype.draw = function (c) {
   }
 
   var flash = this.hitFlash > 0;
-  var bodyColor = flash ? '#ffffff' : (this.phase >= 3 ? '#a02030' : (this.phase >= 2 ? '#7a1828' : '#5a1020'));
+  var bodyColor = flash ? '#ffffff' : colorDark;
+
+  // форма тела в зависимости от типа
   c.fillStyle = bodyColor;
   c.beginPath();
-  for (var i = 0; i < 8; i++) {
-    var a = (i / 8) * 6.2832 - Math.PI / 2;
-    var px = Math.cos(a) * r;
-    var py = Math.sin(a) * r;
-    if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+
+  if (this.bossShape === 'octagon') {
+    for (var i = 0; i < 8; i++) {
+      var a = (i / 8) * 6.2832 - Math.PI / 2;
+      var px = Math.cos(a) * r;
+      var py = Math.sin(a) * r;
+      if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+    }
+    c.closePath();
+  } else if (this.bossShape === 'spikes') {
+    // круг с шипами
+    var spikes = 12;
+    for (var si = 0; si < spikes * 2; si++) {
+      var sa = (si / (spikes * 2)) * 6.2832 - Math.PI / 2;
+      var sr = (si % 2 === 0) ? r : r * 0.75;
+      var spx = Math.cos(sa) * sr;
+      var spy = Math.sin(sa) * sr;
+      if (si === 0) c.moveTo(spx, spy); else c.lineTo(spx, spy);
+    }
+    c.closePath();
+  } else if (this.bossShape === 'star') {
+    // 8-конечная звезда
+    for (var sti = 0; sti < 16; sti++) {
+      var sta = (sti / 16) * 6.2832 - Math.PI / 2;
+      var str = (sti % 2 === 0) ? r : r * 0.5;
+      var stx = Math.cos(sta) * str;
+      var sty = Math.sin(sta) * str;
+      if (sti === 0) c.moveTo(stx, sty); else c.lineTo(stx, sty);
+    }
+    c.closePath();
+  } else {
+    // hex
+    for (var hi = 0; hi < 6; hi++) {
+      var ha = (hi / 6) * 6.2832 - Math.PI / 2;
+      var hpx = Math.cos(ha) * r;
+      var hpy = Math.sin(ha) * r;
+      if (hi === 0) c.moveTo(hpx, hpy); else c.lineTo(hpx, hpy);
+    }
+    c.closePath();
   }
-  c.closePath();
   c.fill();
 
-  c.strokeStyle = flash ? '#fff' : '#ff5570';
-  c.lineWidth = 2;
+  c.strokeStyle = flash ? '#fff' : color;
+  c.lineWidth = 2.5;
   c.stroke();
 
+  // ядро
   if (!Game.lowQuality) {
     var corePulse = 1 + Math.sin(this.t * 5) * 0.2;
     var coreG = c.createRadialGradient(0, 0, 0, 0, 0, r * 0.55 * corePulse);
     coreG.addColorStop(0, '#fff');
-    coreG.addColorStop(0.4, '#ff5570');
-    coreG.addColorStop(1, 'rgba(255,50,80,0)');
+    coreG.addColorStop(0.4, color);
+    coreG.addColorStop(1, this.hexToRgba(color, 0));
     c.fillStyle = coreG;
     c.beginPath(); c.arc(0, 0, r * 0.55 * corePulse, 0, 6.2832); c.fill();
   } else {
-    c.fillStyle = '#ff5570';
+    c.fillStyle = color;
     c.beginPath(); c.arc(0, 0, r * 0.4, 0, 6.2832); c.fill();
   }
 
+  // глаза
   c.fillStyle = '#0a0714';
   c.beginPath();
   c.arc(-r * 0.35, -r * 0.15, r * 0.11, 0, 6.2832);
   c.arc(r * 0.35, -r * 0.15, r * 0.11, 0, 6.2832);
   c.fill();
 
-  c.fillStyle = this.phase >= 3 ? '#ffc857' : '#ff3355';
+  c.fillStyle = this.phase >= 3 ? '#ffc857' : color;
   c.beginPath();
   c.arc(-r * 0.35, -r * 0.15, r * 0.05, 0, 6.2832);
   c.arc(r * 0.35, -r * 0.15, r * 0.05, 0, 6.2832);
   c.fill();
 
-  c.strokeStyle = flash ? '#fff' : '#ffc857';
+  // рога для devourer / корона для остальных
+  c.strokeStyle = flash ? '#fff' : (this.bossType === 'titan' ? '#ffe8a8' : color);
   c.lineWidth = 3;
   c.lineCap = 'round';
   c.beginPath();
-  c.moveTo(-r * 0.55, -r * 0.85);
-  c.lineTo(-r * 0.75, -r * 1.35);
-  c.moveTo(r * 0.55, -r * 0.85);
-  c.lineTo(r * 0.75, -r * 1.35);
-  c.moveTo(-r * 0.2, -r * 0.95);
-  c.lineTo(0, -r * 1.45);
-  c.moveTo(r * 0.2, -r * 0.95);
-  c.lineTo(0, -r * 1.45);
+  if (this.bossType === 'devourer') {
+    c.moveTo(-r * 0.55, -r * 0.85);
+    c.lineTo(-r * 0.75, -r * 1.35);
+    c.moveTo(r * 0.55, -r * 0.85);
+    c.lineTo(r * 0.75, -r * 1.35);
+    c.moveTo(-r * 0.2, -r * 0.95);
+    c.lineTo(0, -r * 1.45);
+    c.moveTo(r * 0.2, -r * 0.95);
+    c.lineTo(0, -r * 1.45);
+  } else if (this.bossType === 'summoner') {
+    c.moveTo(-r * 0.7, -r * 0.7);
+    c.lineTo(-r * 0.85, -r * 1.15);
+    c.moveTo(r * 0.7, -r * 0.7);
+    c.lineTo(r * 0.85, -r * 1.15);
+  } else if (this.bossType === 'mage') {
+    c.moveTo(-r * 0.5, -r * 0.9);
+    c.lineTo(0, -r * 1.5);
+    c.lineTo(r * 0.5, -r * 0.9);
+  } else {
+    // titan — корона
+    c.moveTo(-r * 0.5, -r * 0.95);
+    c.lineTo(-r * 0.5, -r * 1.35);
+    c.lineTo(-r * 0.17, -r * 1.05);
+    c.lineTo(0, -r * 1.5);
+    c.lineTo(r * 0.17, -r * 1.05);
+    c.lineTo(r * 0.5, -r * 1.35);
+    c.lineTo(r * 0.5, -r * 0.95);
+  }
   c.stroke();
 
   c.restore();
+};
+
+Boss.prototype.hexToRgba = function (hex, a) {
+  var n = parseInt(hex.replace('#', ''), 16);
+  return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
 };
 
 /* ================= ИГРОК ================= */

@@ -1,23 +1,22 @@
 /* ============================================================
-   BOOK — книга душ с обложкой и перелистыванием страниц
+   BOOK — книга душ с обложкой и динамическими страницами
    ============================================================ */
 
 var Book = {
   state: 'closed',
   currentPage: 0,
-  pages: [
-    { chapter: 0, items: ['hp', 'manaRegen', 'damage'] },
-    { chapter: 0, items: ['speed', 'crit'] },
-    { chapter: 1, items: ['novaDmg', 'fireBurn'] },
-    { chapter: 1, items: ['chainRange', 'fireHoming'] }
-  ],
+  pages: [],
   chapters: [
-    { id: 'stats',  title: '📊 Статы персонажа' },
-    { id: 'spells', title: '✨ Заклинания' }
+    { id: 'stats',  title: '📊 Статы', group: 'stats',  list: null },
+    { id: 'spells', title: '✨ Заклинания', group: 'spells', list: null }
   ],
+  ITEMS_PER_PAGE: 5,
   elems: {},
 
   init: function () {
+    this.chapters[0].list = META_STATS;
+    this.chapters[1].list = META_SPELLS;
+
     var $ = function (id) { return document.getElementById(id); };
     this.elems = {
       cover: $('book-cover'),
@@ -48,6 +47,28 @@ var Book = {
       (function (idx) {
         tabs[idx].addEventListener('click', function () { self.goToChapter(idx); });
       })(j);
+    }
+
+    this.buildPages();
+  },
+
+  /* ---------- динамическое построение страниц ---------- */
+  buildPages: function () {
+    this.pages = [];
+    for (var ch = 0; ch < this.chapters.length; ch++) {
+      var list = this.chapters[ch].list;
+      var items = [];
+      for (var i = 0; i < list.length; i++) items.push(list[i].id);
+
+      // если все вмещаются в одну страницу — одна страница
+      if (items.length <= this.ITEMS_PER_PAGE) {
+        this.pages.push({ chapter: ch, items: items });
+      } else {
+        // иначе — режем на страницы по ITEMS_PER_PAGE
+        for (var k = 0; k < items.length; k += this.ITEMS_PER_PAGE) {
+          this.pages.push({ chapter: ch, items: items.slice(k, k + this.ITEMS_PER_PAGE) });
+        }
+      }
     }
   },
 
@@ -157,15 +178,15 @@ var Book = {
   renderPage: function () {
     var pageIdx = this.currentPage;
     var pageData = this.pages[pageIdx];
+    if (!pageData) return;
     var chapterIdx = pageData.chapter;
     var chapter = this.chapters[chapterIdx];
-    var group = chapterIdx === 0 ? 'stats' : 'spells';
-    var upgList = chapterIdx === 0 ? META_STATS : META_SPELLS;
+    var group = chapter.group;
+    var upgList = chapter.list;
 
     var html = '';
     html += '<div class="book-souls-badge">✦ ' + Utils.formatNum(Game.meta.souls) + '</div>';
 
-    // chapter title only on first page of chapter
     var isFirstPageOfChapter = pageIdx === 0 || this.pages[pageIdx - 1].chapter !== chapterIdx;
     if (isFirstPageOfChapter) {
       html += '<div class="book-chapter-title">' + chapter.title + '</div>';
@@ -177,7 +198,6 @@ var Book = {
 
     this.elems.page.innerHTML = html;
 
-    // bind buy buttons
     var btns = this.elems.page.querySelectorAll('.book-upg-buy[data-id]');
     var self = this;
     for (var j = 0; j < btns.length; j++) {
@@ -221,8 +241,9 @@ var Book = {
   },
 
   buyUpgrade: function (id, chapterIdx) {
-    var group = chapterIdx === 0 ? 'stats' : 'spells';
-    var upgList = chapterIdx === 0 ? META_STATS : META_SPELLS;
+    var chapter = this.chapters[chapterIdx];
+    var group = chapter.group;
+    var upgList = chapter.list;
     var upg = null;
     for (var i = 0; i < upgList.length; i++) {
       if (upgList[i].id === id) { upg = upgList[i]; break; }
@@ -243,7 +264,6 @@ var Book = {
 
   updateSouls: function () {
     if (this.elems.coverSouls) this.elems.coverSouls.textContent = Utils.formatNum(Game.meta.souls);
-    // also refresh menu souls display
     var menuSouls = document.getElementById('menu-souls');
     if (menuSouls) menuSouls.textContent = Utils.formatNum(Game.meta.souls);
   }

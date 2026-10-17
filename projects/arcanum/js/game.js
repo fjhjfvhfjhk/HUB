@@ -1,5 +1,5 @@
 /* ============================================================
-   GAME — главный объект: цикл, волны, бой, отрисовка, HUD
+   GAME — главный цикл, волны, элитные враги, боссы, HUD
    ============================================================ */
 
 var Game = {
@@ -25,11 +25,13 @@ var Game = {
   spatialGrid: null,
   frameTimes: [],
   lowQuality: false,
+  _qualityCooldown: 0,
   maxParticles: 320,
   maxProjectiles: 150,
   maxEnemyProjectiles: 60,
   maxDamageTexts: 40,
   maxEnemies: 30,
+  vignetteCanvas: null,
 
   init: function () {
     this.canvas = document.getElementById('game');
@@ -37,7 +39,6 @@ var Game = {
     this.spatialGrid = new SpatialGrid(120);
 
     this.loadMeta();
-
     this.resize();
     var self = this;
     window.addEventListener('resize', function () { self.resize(); });
@@ -54,9 +55,7 @@ var Game = {
     this.generateBgRunes();
     this.generateNebula();
     this.generateStars();
-
     Book.init();
-
     this.setState('menu');
     this.lastTime = performance.now();
     requestAnimationFrame(function (t) { self.loop(t); });
@@ -102,6 +101,26 @@ var Game = {
     this.canvas.style.height = this.H + 'px';
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.generateStars();
+    this.buildVignette();
+  },
+
+  /* Кеш виньетки — устраняет мерцание от пересоздания градиента каждый кадр */
+  buildVignette: function () {
+    var W = this.W, H = this.H;
+    var c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    var cx = c.getContext('2d');
+    var cx0 = W / 2, cy0 = H / 2;
+    var innerR = Math.min(W, H) * 0.28;
+    var outerR = Math.max(W, H) * 0.78;
+    var g = cx.createRadialGradient(cx0, cy0, innerR, cx0, cy0, outerR);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(0.55, 'rgba(10,5,25,0.18)');
+    g.addColorStop(1, 'rgba(0,0,0,0.55)');
+    cx.fillStyle = g;
+    cx.fillRect(0, 0, W, H);
+    this.vignetteCanvas = c;
   },
 
   generateBgRunes: function () {
@@ -122,7 +141,6 @@ var Game = {
     this.nebulae = [];
     var palette = ['#3a1d6b', '#5c2a94', '#1d3a6b', '#2a1d4a', '#4a1d5c'];
     for (var i = 0; i < 5; i++) {
-      // pre-render nebula to offscreen canvas
       var size = 400;
       var c = document.createElement('canvas');
       c.width = size;
@@ -152,7 +170,7 @@ var Game = {
         y: Math.random() * this.H,
         s: 0.6 + Math.random() * 1.3,
         phase: Math.random() * 6.28,
-        speed: 0.7 + Math.random() * 1.5,
+        speed: 0.4 + Math.random() * 0.8,
         color: Math.random() < 0.15 ? '#b56bff' : (Math.random() < 0.2 ? '#8ad4ff' : '#ffffff')
       });
     }
@@ -320,9 +338,7 @@ var Game = {
       self.keys[e.key.toLowerCase()] = true;
       if (e.key === 'Escape') {
         if (self.state === 'playing') self.pause();
-        else if (self.state === 'book') {
-          Book.closeBook();
-        }
+        else if (self.state === 'book') Book.closeBook();
       }
     });
     window.addEventListener('keyup', function (e) { self.keys[e.key.toLowerCase()] = false; });
@@ -418,6 +434,7 @@ var Game = {
     this._playerTrailTimer = 0;
     this.bossActive = null;
     this.lowQuality = false;
+    this._qualityCooldown = 0;
     this.frameTimes = [];
     this.setState('playing');
     this.startWave();
@@ -474,16 +491,17 @@ var Game = {
     var a = Math.random() * 6.2832;
     var x = p.x + Math.cos(a) * minR;
     var y = p.y + Math.sin(a) * minR;
-    var boss = new Boss(x, y, this.wave);
+    var bossType = pickBossType(this.wave);
+    var boss = new Boss(x, y, this.wave, bossType);
     this.enemies.push(boss);
     this.bossActive = boss;
     this.shake(18);
-    this.screenFlash = 0.4;
-    this.screenFlashColor = 'rgba(255,50,80,0.45)';
+    this.screenFlash = 0.45;
+    this.screenFlashColor = boss.hexToRgba(boss.bossColor, 0.45);
     Audio2.bossAppear();
     Utils.vibrate(150);
     for (var i = 0; i < 3; i++) {
-      this.particles.push(new RingParticle(x, y, 100 + i * 60, 0.9, '#ff3355', 4));
+      this.particles.push(new RingParticle(x, y, 100 + i * 60, 0.9, boss.bossColor, 4));
     }
   },
 
@@ -516,16 +534,19 @@ var Game = {
     var r = minR + Math.random() * (maxR - minR);
     var x = p.x + Math.cos(a) * r;
     var y = p.y + Math.sin(a) * r;
-    this.enemies.push(new Enemy(x, y, type, this.wave));
+    // элитные враги: 8% + 0.2% за волну, максимум 20%
+    var eliteChance = Math.min(0.20, 0.08 + this.wave * 0.002);
+    var isElite = Math.random() < eliteChance;
+    this.enemies.push(new Enemy(x, y, type, this.wave, isElite));
     if (!this.lowQuality) {
-      this.particles.push(new RingParticle(x, y, 40, 0.4, ENEMY_TYPES[type].color, 2));
-      for (var i = 0; i < 6; i++) {
+      this.particles.push(new RingParticle(x, y, isElite ? 60 : 40, 0.4, isElite ? '#ffc857' : ENEMY_TYPES[type].color, isElite ? 3 : 2));
+      var spCount = isElite ? 10 : 6;
+      for (var i = 0; i < spCount; i++) {
+        if (this.particles.length >= this.maxParticles) break;
         var pa = Math.random() * 6.2832;
         var ps = 40 + Math.random() * 80;
-        if (this.particles.length < this.maxParticles) {
-          this.particles.push(new Particle(x, y, Math.cos(pa) * ps, Math.sin(pa) * ps,
-            0.3 + Math.random() * 0.25, ENEMY_TYPES[type].color, 2 + Math.random() * 2));
-        }
+        this.particles.push(new Particle(x, y, Math.cos(pa) * ps, Math.sin(pa) * ps,
+          0.3 + Math.random() * 0.25, isElite ? '#ffc857' : ENEMY_TYPES[type].color, 2 + Math.random() * 2));
       }
     }
   },
@@ -826,12 +847,6 @@ var Game = {
     }
   },
 
-  isInViewport: function (x, y, margin) {
-    margin = margin || 60;
-    return x > this.camX - margin && x < this.camX + this.W + margin &&
-           y > this.camY - margin && y < this.camY + this.H + margin;
-  },
-
   update: function (dt) {
     if (this.state !== 'playing') return;
     var p = this.player;
@@ -862,7 +877,6 @@ var Game = {
       if (this.comboTimer <= 0) this.comboCount = 0;
     }
 
-    // enemies update
     for (var i = this.enemies.length - 1; i >= 0; i--) {
       var e = this.enemies[i];
       if (e.dead) {
@@ -872,12 +886,10 @@ var Game = {
           Audio2.bossDie();
           this.shake(20);
           this.screenFlash = 0.5;
-          this.screenFlashColor = 'rgba(255,200,87,0.5)';
-          this.pickups.push(new Pickup(e.x, e.y, 'hp', 40));
-          this.pickups.push(new Pickup(e.x + 20, e.y, 'mana', 40));
-          for (var q = 0; q < 3; q++) {
-            this.pickups.push(new Pickup(e.x + q * 12 - 12, e.y + 10, 'xp', 30));
-          }
+          this.screenFlashColor = e.hexToRgba(e.bossColor, 0.5);
+          // разный дроп по типу
+          var drops = this.getBossDrops(e);
+          for (var di = 0; di < drops.length; di++) this.pickups.push(drops[di]);
         }
         continue;
       }
@@ -905,11 +917,8 @@ var Game = {
       }
     }
 
-    // rebuild spatial grid after enemies move
     this.spatialGrid.rebuild(this.enemies);
 
-    // player projectiles
-    var viewMargin = 100;
     for (var j = this.projectiles.length - 1; j >= 0; j--) {
       var pr = this.projectiles[j];
       pr.update(dt);
@@ -968,7 +977,6 @@ var Game = {
       }
     }
 
-    // enemy projectiles
     for (var ep = this.enemyProjectiles.length - 1; ep >= 0; ep--) {
       var epr = this.enemyProjectiles[ep];
       epr.update(dt);
@@ -986,7 +994,6 @@ var Game = {
       }
     }
 
-    // pickups
     for (var m = this.pickups.length - 1; m >= 0; m--) {
       var pk = this.pickups[m];
       var collected = pk.update(dt, p);
@@ -1008,18 +1015,15 @@ var Game = {
       }
     }
 
-    // particles
     for (var n2 = this.particles.length - 1; n2 >= 0; n2--) {
       var pt = this.particles[n2];
       pt.update(dt);
       if (pt.dead) this.particles.splice(n2, 1);
     }
-    // hard cap particles (remove oldest)
     if (this.particles.length > this.maxParticles) {
       this.particles.splice(0, this.particles.length - this.maxParticles);
     }
 
-    // damage texts
     for (var o = this.damageTexts.length - 1; o >= 0; o--) {
       var txt = this.damageTexts[o];
       txt.life -= dt;
@@ -1047,10 +1051,37 @@ var Game = {
     this.updateSpellButtons();
   },
 
+  getBossDrops: function (boss) {
+    var drops = [];
+    var lvl = boss.bossLevel;
+    // у всех — базовые
+    drops.push(new Pickup(boss.x, boss.y, 'hp', 40 + lvl * 10));
+    drops.push(new Pickup(boss.x + 20, boss.y, 'mana', 40 + lvl * 10));
+    if (boss.bossType === 'titan') {
+      // больше HP
+      drops.push(new Pickup(boss.x - 20, boss.y, 'hp', 40));
+      drops.push(new Pickup(boss.x + 40, boss.y, 'hp', 40));
+      for (var i = 0; i < 2; i++) drops.push(new Pickup(boss.x + i * 14 - 7, boss.y + 20, 'xp', 25));
+    } else if (boss.bossType === 'summoner') {
+      // больше XP
+      for (var j = 0; j < 5; j++) drops.push(new Pickup(boss.x + j * 12 - 24, boss.y + 10, 'xp', 25));
+    } else if (boss.bossType === 'mage') {
+      // больше маны
+      drops.push(new Pickup(boss.x - 20, boss.y, 'mana', 50));
+      drops.push(new Pickup(boss.x + 30, boss.y, 'mana', 50));
+      for (var k = 0; k < 3; k++) drops.push(new Pickup(boss.x + k * 12 - 12, boss.y + 20, 'xp', 25));
+    } else {
+      // devourer — универсальный
+      for (var d = 0; d < 3; d++) drops.push(new Pickup(boss.x + d * 14 - 14, boss.y + 10, 'xp', 30));
+    }
+    return drops;
+  },
+
   onEnemyDeath: function (e) {
     Audio2.enemyDie();
     this.kills++;
-    this.score += Math.round(e.xp * 10 * (1 + this.wave * 0.06));
+    var baseScore = Math.round(e.xp * 10 * (1 + this.wave * 0.06));
+    this.score += e.isElite ? Math.round(baseScore * 1.8) : baseScore;
     this.comboCount++;
     this.comboTimer = 2.5;
     if (this.comboCount > 0 && this.comboCount % 5 === 0) {
@@ -1059,27 +1090,35 @@ var Game = {
     }
 
     if (!this.lowQuality) {
-      var n = Math.min(18, 8 + Math.floor(e.radius * 0.5));
+      var n = Math.min(e.isElite ? 24 : 18, 8 + Math.floor(e.radius * 0.5));
       for (var i = 0; i < n; i++) {
         if (this.particles.length >= this.maxParticles) break;
         var a = Math.random() * 6.2832;
         var s = 70 + Math.random() * 180;
+        var col = e.isElite ? (i % 2 === 0 ? '#ffc857' : '#fff') : (i % 3 === 0 ? '#ffffff' : e.base.color);
         var pt = new Particle(e.x, e.y, Math.cos(a) * s, Math.sin(a) * s,
-          0.4 + Math.random() * 0.45, i % 3 === 0 ? '#ffffff' : e.base.color, 2 + Math.random() * 3);
+          0.4 + Math.random() * 0.45, col, 2 + Math.random() * 3);
         pt.drag = 0.91;
         this.particles.push(pt);
       }
-      this.particles.push(new RingParticle(e.x, e.y, e.radius * 3, 0.4, e.base.color, 3));
+      this.particles.push(new RingParticle(e.x, e.y, e.radius * 3, 0.4, e.isElite ? '#ffc857' : e.base.color, e.isElite ? 4 : 3));
     }
     this.shake(Math.min(7, e.radius * 0.3));
 
     if (e.isBoss) return;
 
     var roll = Math.random();
-    if (roll < 0.14) this.pickups.push(new Pickup(e.x, e.y, 'hp', 18));
-    else if (roll < 0.34) this.pickups.push(new Pickup(e.x, e.y, 'mana', 22));
-    else if (roll < 0.80) this.pickups.push(new Pickup(e.x, e.y, 'xp', e.xp));
-    if (e.type === 'brute') this.pickups.push(new Pickup(e.x + 14, e.y, 'xp', e.xp));
+    if (e.isElite) {
+      // элитные дают больше
+      this.pickups.push(new Pickup(e.x, e.y, 'hp', 25));
+      this.pickups.push(new Pickup(e.x + 12, e.y, 'mana', 25));
+      this.pickups.push(new Pickup(e.x - 12, e.y, 'xp', e.xp));
+    } else {
+      if (roll < 0.14) this.pickups.push(new Pickup(e.x, e.y, 'hp', 18));
+      else if (roll < 0.34) this.pickups.push(new Pickup(e.x, e.y, 'mana', 22));
+      else if (roll < 0.80) this.pickups.push(new Pickup(e.x, e.y, 'xp', e.xp));
+    }
+    if (e.type === 'brute' && !e.isElite) this.pickups.push(new Pickup(e.x + 14, e.y, 'xp', e.xp));
   },
 
   spawnDamageText: function (x, y, val, crit, color) {
@@ -1126,6 +1165,7 @@ var Game = {
       this.drawNebula(ctx, 0.4);
       this.drawStars(ctx, 0.4);
       this.drawMenuBg(ctx);
+      this.drawVignette(ctx);
       return;
     }
 
@@ -1144,7 +1184,6 @@ var Game = {
 
     for (var i = 0; i < this.pickups.length; i++) this.pickups[i].draw(ctx);
 
-    // projectiles
     for (var j = 0; j < this.projectiles.length; j++) {
       var pr = this.projectiles[j];
       if (pr.x < viewL - 60 || pr.x > viewR + 60 || pr.y < viewT - 60 || pr.y > viewB + 60) continue;
@@ -1170,14 +1209,12 @@ var Game = {
       pr.draw(ctx);
     }
 
-    // enemy projectiles
     for (var epi = 0; epi < this.enemyProjectiles.length; epi++) {
       var epr = this.enemyProjectiles[epi];
       if (epr.x < viewL - 40 || epr.x > viewR + 40 || epr.y < viewT - 40 || epr.y > viewB + 40) continue;
       epr.draw(ctx);
     }
 
-    // enemies (culled)
     for (var k = 0; k < this.enemies.length; k++) {
       var en = this.enemies[k];
       if (en.x + en.radius < viewL || en.x - en.radius > viewR) continue;
@@ -1188,7 +1225,6 @@ var Game = {
     this.player.draw(ctx);
     this.drawAutoAimReticle(ctx);
 
-    // particles (culled)
     for (var pidx = 0; pidx < this.particles.length; pidx++) {
       var pt = this.particles[pidx];
       if (pt.x < viewL - 20 || pt.x > viewR + 20 || pt.y < viewT - 20 || pt.y > viewB + 20) continue;
@@ -1197,6 +1233,8 @@ var Game = {
 
     this.drawDamageTexts(ctx);
     ctx.restore();
+
+    this.drawVignette(ctx);
 
     if (this.screenFlash > 0) {
       ctx.save();
@@ -1208,6 +1246,12 @@ var Game = {
 
     this.drawHUD(ctx);
     this.drawCombo(ctx);
+  },
+
+  drawVignette: function (ctx) {
+    if (this.vignetteCanvas) {
+      ctx.drawImage(this.vignetteCanvas, 0, 0);
+    }
   },
 
   drawNebula: function (ctx, parallax) {
@@ -1235,8 +1279,9 @@ var Game = {
       var s = this.stars[i];
       var sx = ((s.x + px) % this.W + this.W) % this.W;
       var sy = ((s.y + py) % this.H + this.H) % this.H;
-      var twinkle = 0.4 + Math.abs(Math.sin(t * s.speed + s.phase)) * 0.6;
-      ctx.globalAlpha = twinkle * 0.7;
+      // мягкое мерцание — уменьшенная амплитуда, чтобы не раздражало
+      var twinkle = this.lowQuality ? 0.75 : (0.6 + Math.abs(Math.sin(t * s.speed + s.phase)) * 0.4);
+      ctx.globalAlpha = twinkle * 0.75;
       ctx.fillStyle = s.color;
       ctx.beginPath(); ctx.arc(sx, sy, s.s, 0, 6.2832); ctx.fill();
     }
@@ -1289,17 +1334,6 @@ var Game = {
         ctx.fillText(r.glyph, rx, ry);
       }
       ctx.restore();
-    }
-
-    if (this.player && !this.lowQuality) {
-      var g = ctx.createRadialGradient(
-        this.player.x, this.player.y, 60,
-        this.player.x, this.player.y, 520
-      );
-      g.addColorStop(0, 'rgba(120,80,220,0.06)');
-      g.addColorStop(1, 'rgba(0,0,0,0.45)');
-      ctx.fillStyle = g;
-      ctx.fillRect(left, top, right - left, bottom - top);
     }
   },
 
@@ -1404,9 +1438,11 @@ var Game = {
     ctx.fill();
     var frac = Utils.clamp(boss.hp / boss.maxHp, 0, 1);
     var grad = ctx.createLinearGradient(bx, 0, bx + bw, 0);
-    grad.addColorStop(0, '#ff3355');
-    grad.addColorStop(0.5, '#ff5570');
-    grad.addColorStop(1, '#a02030');
+    var c1 = boss.bossColor;
+    // конвертим в чуть более тёмные оттенки
+    grad.addColorStop(0, c1);
+    grad.addColorStop(0.5, c1);
+    grad.addColorStop(1, boss.bossColorDark);
     ctx.fillStyle = grad;
     if (frac > 0) {
       this.roundRect(ctx, bx, by, bw * frac, bh, 11);
@@ -1416,11 +1452,23 @@ var Game = {
     ctx.lineWidth = 1.5;
     this.roundRect(ctx, bx, by, bw, bh, 11);
     ctx.stroke();
-    ctx.fillStyle = '#ffe8a8';
+    // имя и тип
+    ctx.fillStyle = '#fff';
     ctx.font = 'bold 12px -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(boss.name + ' · Фаза ' + boss.phase, this.W / 2, by + bh / 2 + 0.5);
+    ctx.fillText(boss.bossName + ' · Фаза ' + boss.phase, this.W / 2, by + bh / 2 + 0.5);
+    // маркеры фаз
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1;
+    var marks = [0.5, 0.25];
+    for (var i = 0; i < marks.length; i++) {
+      var mx = bx + bw * marks[i];
+      ctx.beginPath();
+      ctx.moveTo(mx, by);
+      ctx.lineTo(mx, by + bh);
+      ctx.stroke();
+    }
   },
 
   drawHUD: function (ctx) {
@@ -1536,7 +1584,7 @@ var Game = {
     if (dt > 0.25) dt = 0.25;
     if (dt < 0) dt = 0;
 
-    // adaptive quality check
+    // адаптивное качество с гистерезисом (устраняет мерцание фона)
     if (this.state === 'playing') {
       this.frameTimes.push(dt * 1000);
       if (this.frameTimes.length > 30) this.frameTimes.shift();
@@ -1544,8 +1592,15 @@ var Game = {
         var sum = 0;
         for (var i = 0; i < this.frameTimes.length; i++) sum += this.frameTimes[i];
         var avg = sum / this.frameTimes.length;
-        this.lowQuality = avg > 22;
+        if (!this.lowQuality && avg > 26) {
+          this.lowQuality = true;
+          this._qualityCooldown = 90;
+        } else if (this.lowQuality && avg < 16 && this._qualityCooldown <= 0) {
+          this.lowQuality = false;
+          this._qualityCooldown = 90;
+        }
       }
+      if (this._qualityCooldown > 0) this._qualityCooldown--;
     }
 
     this.accumulator += dt;
