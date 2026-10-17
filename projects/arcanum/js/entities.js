@@ -1,5 +1,5 @@
 /* ============================================================
-   ENTITIES v5.1 — кеш градиентов, режим производительности
+   ENTITIES v6 — invuln, poison, slow projectile
    ============================================================ */
 
 function Particle(x, y, vx, vy, life, color, size) {
@@ -60,12 +60,15 @@ function Projectile(x, y, angle, speed, damage, opts) {
   this.hitSet = [];
   this.knockback = opts.knockback || 0;
   this.burn = opts.burn || 0;
+  this.slowFactor = opts.slowFactor || 0;
+  this.slowDuration = opts.slowDuration || 0;
   this.dead = false;
   this._trailTimer = 0;
   this.isFireball = false;
   this.target = null;
   this.homing = 0;
   this.pulse = 0;
+  this.isFrost = false;
 }
 Projectile.prototype.update = function (dt) {
   if (this.homing > 0 && this.target && !this.target.dead) {
@@ -108,6 +111,28 @@ Projectile.prototype.draw = function (c) {
       c.rotate(2.094);
       c.beginPath(); c.arc(this.radius * 1.5, 0, 1.6, 0, 6.2832); c.fill();
     }
+    c.restore();
+    return;
+  }
+  if (this.isFrost) {
+    var sf = 1 + Math.sin(this.pulse) * 0.1;
+    c.save();
+    c.translate(this.x, this.y);
+    var gf = c.createRadialGradient(0, 0, 0, 0, 0, this.radius * 2.8 * sf);
+    gf.addColorStop(0, 'rgba(180,240,255,0.9)');
+    gf.addColorStop(0.5, 'rgba(120,200,255,0.5)');
+    gf.addColorStop(1, 'rgba(80,180,255,0)');
+    c.fillStyle = gf;
+    c.beginPath(); c.arc(0, 0, this.radius * 2.8 * sf, 0, 6.2832); c.fill();
+    c.fillStyle = '#e0f4ff';
+    c.beginPath(); c.arc(0, 0, this.radius * 0.7, 0, 6.2832); c.fill();
+    c.rotate(this.pulse * 0.8);
+    c.strokeStyle = '#a0e0ff';
+    c.lineWidth = 1.5;
+    c.beginPath();
+    c.moveTo(-this.radius * 1.4, 0); c.lineTo(this.radius * 1.4, 0);
+    c.moveTo(0, -this.radius * 1.4); c.lineTo(0, this.radius * 1.4);
+    c.stroke();
     c.restore();
     return;
   }
@@ -208,6 +233,7 @@ function Enemy(x, y, typeKey, wave, isElite) {
   this.isBoss = false;
   this.slowTimer = 0; this.slowFactor = 1;
   this.burnTimer = 0; this.burnDps = 0;
+  this.poisonTimer = 0; this.poisonDps = 0;
   this.hitFlash = 0;
   this.knockVx = 0; this.knockVy = 0;
   this.wobble = Math.random() * 6.28; this.t = 0;
@@ -221,6 +247,10 @@ Enemy.prototype.applySlow = function (f, d) {
 Enemy.prototype.applyBurn = function (dps, d) {
   this.burnDps = Math.max(this.burnDps, dps);
   this.burnTimer = Math.max(this.burnTimer, d);
+};
+Enemy.prototype.applyPoison = function (dps, d) {
+  this.poisonDps = Math.max(this.poisonDps, dps);
+  this.poisonTimer = Math.max(this.poisonTimer, d);
 };
 Enemy.prototype.knockback = function (angle, force) {
   if (this.isBoss) force *= 0.3;
@@ -242,6 +272,12 @@ Enemy.prototype.update = function (dt, p, enemies) {
     if (this.burnTimer <= 0) this.burnDps = 0;
     if (this.hp <= 0) { this.dead = true; return; }
   }
+  if (this.poisonTimer > 0) {
+    this.poisonTimer -= dt;
+    this.hp -= this.poisonDps * dt;
+    if (this.poisonTimer <= 0) this.poisonDps = 0;
+    if (this.hp <= 0) { this.dead = true; return; }
+  }
   if (this.hitFlash > 0) this.hitFlash -= dt;
 
   var ang = Math.atan2(p.y - this.y, p.x - this.x);
@@ -249,7 +285,6 @@ Enemy.prototype.update = function (dt, p, enemies) {
   var mvx = Math.cos(ang) * spd;
   var mvy = Math.sin(ang) * spd;
 
-  // Push-apart: пропускаем в perfMode — экономит O(n²) цикл
   var perfMode = (typeof Game !== 'undefined' && Game.performanceMode);
   if (!perfMode) {
     var sx = 0, sy = 0;
@@ -276,8 +311,7 @@ Enemy.prototype.update = function (dt, p, enemies) {
   this.x += (mvx + this.knockVx) * dt;
   this.y += (mvy + this.knockVy) * dt;
 
-  // Эмиссия частиц: только в обычном режиме
-  if ((this.slowTimer > 0 || this.burnTimer > 0) && !perfMode) {
+  if ((this.slowTimer > 0 || this.burnTimer > 0 || this.poisonTimer > 0) && !perfMode) {
     this._emitTimer -= dt;
     if (this._emitTimer <= 0) {
       this._emitTimer = 0.18;
@@ -297,6 +331,13 @@ Enemy.prototype.update = function (dt, p, enemies) {
             (Math.random() - 0.5) * 30, -20 - Math.random() * 20,
             0.45, Math.random() < 0.5 ? '#ffb066' : '#ff7a3c', 2.5));
         }
+        if (this.poisonTimer > 0) {
+          parr.push(new Particle(
+            this.x + (Math.random() - 0.5) * this.radius * 1.4,
+            this.y + (Math.random() - 0.5) * this.radius * 1.4,
+            (Math.random() - 0.5) * 25, -15 - Math.random() * 15,
+            0.5, Math.random() < 0.5 ? '#8aff4d' : '#4dcc30', 2.5));
+        }
       }
     }
   }
@@ -305,7 +346,6 @@ Enemy.prototype.draw = function (c) {
   var r = this.radius, b = this.base;
   var perfMode = (typeof Game !== 'undefined' && Game.performanceMode);
 
-  // Элитная аура — рисуем только вне perfMode
   if (this.isElite && !perfMode) {
     var pulse = 0.85 + Math.sin(this.t * 4) * 0.15;
     var eg = c.createRadialGradient(this.x, this.y, r * 0.7, this.x, this.y, r * 2.1 * pulse);
@@ -325,19 +365,14 @@ Enemy.prototype.draw = function (c) {
     c.globalAlpha = 1;
   }
 
-  // Аура поджога — пропускаем в perfMode
-  if (this.burnTimer > 0 && !perfMode) {
-    var fireG = c.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 2);
-    fireG.addColorStop(0, 'rgba(255,160,60,0.55)');
-    fireG.addColorStop(1, 'rgba(255,80,20,0)');
-    c.fillStyle = fireG;
+  if ((this.burnTimer > 0 || this.poisonTimer > 0) && !perfMode) {
+    var auraCol = this.poisonTimer > 0 ? 'rgba(140,255,80,0.5)' : 'rgba(255,160,60,0.55)';
+    var auraEnd = this.poisonTimer > 0 ? 'rgba(60,200,20,0)' : 'rgba(255,80,20,0)';
+    var auraG = c.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 2);
+    auraG.addColorStop(0, auraCol);
+    auraG.addColorStop(1, auraEnd);
+    c.fillStyle = auraG;
     c.beginPath(); c.arc(0, 0, r * 2, 0, 6.2832); c.fill();
-  } else if (this.burnTimer > 0) {
-    // Упрощённая аура в perfMode
-    c.globalAlpha = 0.25;
-    c.fillStyle = '#ff9a3c';
-    c.beginPath(); c.arc(0, 0, r * 1.4, 0, 6.2832); c.fill();
-    c.globalAlpha = 1;
   }
 
   var flash = this.hitFlash > 0;
@@ -455,8 +490,6 @@ function Boss(x, y, wave, bossType) {
   this.spawnTimer = 5;
   this.teleportTimer = 3;
   this.chargeDir = { x: 0, y: 0 };
-
-  // Кеш rgba — устраняет конкатенацию строк каждый кадр
   this._rgbaCache = {};
 }
 Boss.prototype = Object.create(Enemy.prototype);
@@ -474,16 +507,20 @@ Boss.prototype.hexToRgba = function (hex, a) {
 Boss.prototype.update = function (dt, p, enemies) {
   this.t += dt;
   this.wobble += dt * 3;
-
   var hpFrac = this.hp / this.maxHp;
   if (hpFrac < 0.25 && this.phase < 3) this.phase = 3;
   else if (hpFrac < 0.5 && this.phase < 2) this.phase = 2;
-
   if (this.slowTimer > 0) { this.slowTimer -= dt; if (this.slowTimer <= 0) this.slowFactor = 1; }
   if (this.burnTimer > 0) {
     this.burnTimer -= dt;
     this.hp -= this.burnDps * dt;
     if (this.burnTimer <= 0) this.burnDps = 0;
+    if (this.hp <= 0) { this.dead = true; return; }
+  }
+  if (this.poisonTimer > 0) {
+    this.poisonTimer -= dt;
+    this.hp -= this.poisonDps * dt;
+    if (this.poisonTimer <= 0) this.poisonDps = 0;
     if (this.hp <= 0) { this.dead = true; return; }
   }
   if (this.hitFlash > 0) this.hitFlash -= dt;
@@ -497,19 +534,6 @@ Boss.prototype.update = function (dt, p, enemies) {
   this.knockVy *= Math.pow(0.86, dt * 60);
   this.x += this.knockVx * dt;
   this.y += this.knockVy * dt;
-
-  var perfMode = (typeof Game !== 'undefined' && Game.performanceMode);
-  if (this.burnTimer > 0 && !perfMode) {
-    this._emitTimer = (this._emitTimer || 0) - dt;
-    if (this._emitTimer <= 0) {
-      this._emitTimer = 0.15;
-      Game.particles.push(new Particle(
-        this.x + (Math.random() - 0.5) * this.radius * 1.6,
-        this.y + (Math.random() - 0.5) * this.radius * 1.6,
-        (Math.random() - 0.5) * 40, -30 - Math.random() * 30,
-        0.5, '#ffb066', 3));
-    }
-  }
 };
 
 Boss.prototype.updateDevourer = function (dt, p) {
@@ -544,8 +568,7 @@ Boss.prototype.updateDevourer = function (dt, p) {
     var ca = Math.atan2(p.y - this.y, p.x - this.x);
     this.chargeDir = { x: Math.cos(ca), y: Math.sin(ca) };
     this.chargeTime = 0.65;
-    var perfMode = (typeof Game !== 'undefined' && Game.performanceMode);
-    if (!perfMode) {
+    if (!Game.performanceMode) {
       for (var k = 0; k < 10; k++) {
         var sa = Math.random() * 6.2832;
         var ss = 60 + Math.random() * 80;
@@ -557,15 +580,13 @@ Boss.prototype.updateDevourer = function (dt, p) {
 };
 
 Boss.prototype.updateSummoner = function (dt, p) {
-  var dx = p.x - this.x;
-  var dy = p.y - this.y;
+  var dx = p.x - this.x, dy = p.y - this.y;
   var d = Math.sqrt(dx * dx + dy * dy);
   var targetDist = 280;
   if (d > 0.01) {
-    var towards = (d - targetDist) / Math.abs(d - targetDist || 1);
+    var towards = 0;
     if (d < targetDist - 40) towards = -1;
     else if (d > targetDist + 40) towards = 1;
-    else towards = 0;
     var spd = this.speed * this.slowFactor * (this.phase >= 3 ? 1.4 : 1);
     this.x += (dx / d) * towards * spd * dt;
     this.y += (dy / d) * towards * spd * dt;
@@ -609,12 +630,6 @@ Boss.prototype.updateMage = function (dt, p) {
     this.y = p.y + Math.sin(a) * r;
     if (!Game.performanceMode) {
       Game.particles.push(new RingParticle(this.x, this.y, 80, 0.6, this.bossColor, 4));
-      for (var k = 0; k < 12; k++) {
-        var sa = Math.random() * 6.2832;
-        var ss = 100 + Math.random() * 120;
-        Game.particles.push(new Particle(this.x, this.y,
-          Math.cos(sa) * ss, Math.sin(sa) * ss, 0.5, this.bossColor, 3));
-      }
     }
   } else {
     var ang = Math.atan2(p.y - this.y, p.x - this.x);
@@ -643,7 +658,6 @@ Boss.prototype.updateTitan = function (dt, p) {
   var spd = this.speed * this.slowFactor;
   this.x += Math.cos(ang) * spd * dt;
   this.y += Math.sin(ang) * spd * dt;
-
   this.attackTimer -= dt;
   var d = Math.sqrt((p.x - this.x) * (p.x - this.x) + (p.y - this.y) * (p.y - this.y));
   if (d < this.radius + 70 && this.attackTimer <= 0) {
@@ -652,11 +666,13 @@ Boss.prototype.updateTitan = function (dt, p) {
     var dmg = this.damage * 1.3;
     if (d < radius) {
       var dealt = p.hurt(dmg);
-      Audio2.playerHurt();
-      Utils.vibrate(80);
-      Game.shake(12);
-      Game.spawnDamageText(p.x, p.y - p.radius - 6, dealt, false, '#ff9a3c');
-      if (p.dead) { Game.gameOver(); return; }
+      if (dealt > 0) {
+        Audio2.playerHurt(); Utils.vibrate(80);
+        Game.shake(12);
+        Game.spawnDamageText(p.x, p.y - p.radius - 6, dealt, false, '#ff9a3c');
+        Game.onPlayerDamaged();
+        if (p.dead) { Game.gameOver(); return; }
+      }
     }
     if (!Game.performanceMode) {
       Game.particles.push(new RingParticle(this.x, this.y, radius, 0.5, this.bossColor, 5));
@@ -680,7 +696,6 @@ Boss.prototype.draw = function (c) {
   c.save();
   c.translate(this.x, this.y);
 
-  // Аура — только вне perfMode
   if (!perfMode) {
     var pulse = 1 + Math.sin(this.t * 3) * 0.1;
     var auraG = c.createRadialGradient(0, 0, r * 0.6, 0, 0, r * 2.4 * pulse);
@@ -689,7 +704,6 @@ Boss.prototype.draw = function (c) {
     c.fillStyle = auraG;
     c.beginPath(); c.arc(0, 0, r * 2.4 * pulse, 0, 6.2832); c.fill();
   } else {
-    // Упрощённая статическая аура
     c.globalAlpha = 0.15;
     c.fillStyle = color;
     c.beginPath(); c.arc(0, 0, r * 1.8, 0, 6.2832); c.fill();
@@ -705,25 +719,21 @@ Boss.prototype.draw = function (c) {
 
   var flash = this.hitFlash > 0;
   var bodyColor = flash ? '#ffffff' : colorDark;
-
   c.fillStyle = bodyColor;
   c.beginPath();
 
   if (this.bossShape === 'octagon') {
     for (var i = 0; i < 8; i++) {
       var a = (i / 8) * 6.2832 - Math.PI / 2;
-      var px = Math.cos(a) * r;
-      var py = Math.sin(a) * r;
+      var px = Math.cos(a) * r, py = Math.sin(a) * r;
       if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
     }
     c.closePath();
   } else if (this.bossShape === 'spikes') {
-    var spikes = 12;
-    for (var si = 0; si < spikes * 2; si++) {
-      var sa = (si / (spikes * 2)) * 6.2832 - Math.PI / 2;
+    for (var si = 0; si < 24; si++) {
+      var sa = (si / 24) * 6.2832 - Math.PI / 2;
       var sr = (si % 2 === 0) ? r : r * 0.75;
-      var spx = Math.cos(sa) * sr;
-      var spy = Math.sin(sa) * sr;
+      var spx = Math.cos(sa) * sr, spy = Math.sin(sa) * sr;
       if (si === 0) c.moveTo(spx, spy); else c.lineTo(spx, spy);
     }
     c.closePath();
@@ -731,27 +741,23 @@ Boss.prototype.draw = function (c) {
     for (var sti = 0; sti < 16; sti++) {
       var sta = (sti / 16) * 6.2832 - Math.PI / 2;
       var str = (sti % 2 === 0) ? r : r * 0.5;
-      var stx = Math.cos(sta) * str;
-      var sty = Math.sin(sta) * str;
+      var stx = Math.cos(sta) * str, sty = Math.sin(sta) * str;
       if (sti === 0) c.moveTo(stx, sty); else c.lineTo(stx, sty);
     }
     c.closePath();
   } else {
     for (var hi = 0; hi < 6; hi++) {
       var ha = (hi / 6) * 6.2832 - Math.PI / 2;
-      var hpx = Math.cos(ha) * r;
-      var hpy = Math.sin(ha) * r;
+      var hpx = Math.cos(ha) * r, hpy = Math.sin(ha) * r;
       if (hi === 0) c.moveTo(hpx, hpy); else c.lineTo(hpx, hpy);
     }
     c.closePath();
   }
   c.fill();
-
   c.strokeStyle = flash ? '#fff' : color;
   c.lineWidth = 2.5;
   c.stroke();
 
-  // Ядро — упрощаем в perfMode
   if (!perfMode) {
     var corePulse = 1 + Math.sin(this.t * 5) * 0.2;
     var coreG = c.createRadialGradient(0, 0, 0, 0, 0, r * 0.55 * corePulse);
@@ -765,53 +771,38 @@ Boss.prototype.draw = function (c) {
     c.beginPath(); c.arc(0, 0, r * 0.4, 0, 6.2832); c.fill();
   }
 
-  // Глаза
   c.fillStyle = '#0a0714';
   c.beginPath();
   c.arc(-r * 0.35, -r * 0.15, r * 0.11, 0, 6.2832);
   c.arc(r * 0.35, -r * 0.15, r * 0.11, 0, 6.2832);
   c.fill();
-
   c.fillStyle = this.phase >= 3 ? '#ffc857' : color;
   c.beginPath();
   c.arc(-r * 0.35, -r * 0.15, r * 0.05, 0, 6.2832);
   c.arc(r * 0.35, -r * 0.15, r * 0.05, 0, 6.2832);
   c.fill();
 
-  // Рога / корона
   c.strokeStyle = flash ? '#fff' : (this.bossType === 'titan' ? '#ffe8a8' : color);
   c.lineWidth = 3;
   c.lineCap = 'round';
   c.beginPath();
   if (this.bossType === 'devourer') {
-    c.moveTo(-r * 0.55, -r * 0.85);
-    c.lineTo(-r * 0.75, -r * 1.35);
-    c.moveTo(r * 0.55, -r * 0.85);
-    c.lineTo(r * 0.75, -r * 1.35);
-    c.moveTo(-r * 0.2, -r * 0.95);
-    c.lineTo(0, -r * 1.45);
-    c.moveTo(r * 0.2, -r * 0.95);
-    c.lineTo(0, -r * 1.45);
+    c.moveTo(-r * 0.55, -r * 0.85); c.lineTo(-r * 0.75, -r * 1.35);
+    c.moveTo(r * 0.55, -r * 0.85); c.lineTo(r * 0.75, -r * 1.35);
+    c.moveTo(-r * 0.2, -r * 0.95); c.lineTo(0, -r * 1.45);
+    c.moveTo(r * 0.2, -r * 0.95); c.lineTo(0, -r * 1.45);
   } else if (this.bossType === 'summoner') {
-    c.moveTo(-r * 0.7, -r * 0.7);
-    c.lineTo(-r * 0.85, -r * 1.15);
-    c.moveTo(r * 0.7, -r * 0.7);
-    c.lineTo(r * 0.85, -r * 1.15);
+    c.moveTo(-r * 0.7, -r * 0.7); c.lineTo(-r * 0.85, -r * 1.15);
+    c.moveTo(r * 0.7, -r * 0.7); c.lineTo(r * 0.85, -r * 1.15);
   } else if (this.bossType === 'mage') {
-    c.moveTo(-r * 0.5, -r * 0.9);
-    c.lineTo(0, -r * 1.5);
-    c.lineTo(r * 0.5, -r * 0.9);
+    c.moveTo(-r * 0.5, -r * 0.9); c.lineTo(0, -r * 1.5); c.lineTo(r * 0.5, -r * 0.9);
   } else {
-    c.moveTo(-r * 0.5, -r * 0.95);
-    c.lineTo(-r * 0.5, -r * 1.35);
-    c.lineTo(-r * 0.17, -r * 1.05);
-    c.lineTo(0, -r * 1.5);
-    c.lineTo(r * 0.17, -r * 1.05);
-    c.lineTo(r * 0.5, -r * 1.35);
+    c.moveTo(-r * 0.5, -r * 0.95); c.lineTo(-r * 0.5, -r * 1.35);
+    c.lineTo(-r * 0.17, -r * 1.05); c.lineTo(0, -r * 1.5);
+    c.lineTo(r * 0.17, -r * 1.05); c.lineTo(r * 0.5, -r * 1.35);
     c.lineTo(r * 0.5, -r * 0.95);
   }
   c.stroke();
-
   c.restore();
 };
 
@@ -828,18 +819,19 @@ function Player(x, y) {
   this.projectiles = 1; this.lifesteal = 0; this.armor = 0;
   this.boltBurn = 0; this.boltPierce = 0;
   this.level = 1; this.xp = 0; this.xpNext = 8;
-  this.cd = [0, 0, 0, 0];
+  this.cd = [0, 0, 0, 0, 0];
   this.facing = 0; this.bob = 0;
   this.hurtFlash = 0; this.castFlash = 0;
   this.dead = false;
   this.runeAngle = 0;
+  this.invulnTimer = 0;
   this.metaNovaDmg = 0;
   this.metaFireBurn = 0;
   this.metaChainRange = 0;
   this.metaFireHoming = 0;
-  this.spellCostMod = [1, 1, 1, 1];
-  this.spellCdMod = [1, 1, 1, 1];
-  this.spellDisabled = [false, false, false, false];
+  this.spellCostMod = [1, 1, 1, 1, 1];
+  this.spellCdMod = [1, 1, 1, 1, 1];
+  this.spellDisabled = [false, false, false, false, false];
   this.chainMaxJumps = 4;
 }
 Player.prototype.addXp = function (n) {
@@ -854,6 +846,7 @@ Player.prototype.addXp = function (n) {
   return lv;
 };
 Player.prototype.hurt = function (d) {
+  if (this.invulnTimer > 0) return 0;
   var real = d * (1 - this.armor);
   this.hp -= real;
   this.hurtFlash = 0.25;
@@ -872,9 +865,10 @@ Player.prototype.update = function (dt, mx, my) {
   this.runeAngle += dt * 0.7;
   this.mana = Math.min(this.maxMana, this.mana + this.manaRegen * dt);
   if (this.hpRegen > 0) this.heal(this.hpRegen * dt);
-  for (var i = 0; i < 4; i++) if (this.cd[i] > 0) this.cd[i] = Math.max(0, this.cd[i] - dt);
+  for (var i = 0; i < this.cd.length; i++) if (this.cd[i] > 0) this.cd[i] = Math.max(0, this.cd[i] - dt);
   if (this.hurtFlash > 0) this.hurtFlash -= dt;
   if (this.castFlash > 0) this.castFlash -= dt;
+  if (this.invulnTimer > 0) this.invulnTimer -= dt;
 };
 Player.prototype.drawRune = function (c) {
   var perfMode = (typeof Game !== 'undefined' && Game.performanceMode);
@@ -903,11 +897,28 @@ Player.prototype.drawRune = function (c) {
 Player.prototype.draw = function (c) {
   var r = this.radius;
   var bobY = Math.sin(this.bob) * 1.8;
+  var perfMode = (typeof Game !== 'undefined' && Game.performanceMode);
+
+  // Щит / неуязвимость — кольцо вокруг
+  if (this.invulnTimer > 0) {
+    c.save();
+    c.globalAlpha = 0.5 + Math.sin(performance.now() * 0.015) * 0.25;
+    c.strokeStyle = '#88ddff';
+    c.lineWidth = 3;
+    c.beginPath();
+    c.arc(this.x, this.y, r + 14, 0, 6.2832);
+    c.stroke();
+    c.globalAlpha = 0.25;
+    c.fillStyle = '#88ddff';
+    c.beginPath();
+    c.arc(this.x, this.y, r + 14, 0, 6.2832);
+    c.fill();
+    c.restore();
+  }
+
   this.drawRune(c);
   c.save();
   c.translate(this.x, this.y + bobY);
-
-  var perfMode = (typeof Game !== 'undefined' && Game.performanceMode);
 
   c.globalAlpha = 0.35;
   c.fillStyle = '#000';
@@ -916,7 +927,6 @@ Player.prototype.draw = function (c) {
   c.fill();
   c.globalAlpha = 1;
 
-  // Аура — рисуем только вне perfMode
   if (!perfMode) {
     var auraA = 0.22 + Math.sin(this.bob * 0.6) * 0.06;
     var grad = c.createRadialGradient(0, 0, r * 0.5, 0, 0, r * 3.1);
@@ -973,6 +983,5 @@ Player.prototype.draw = function (c) {
   c.lineTo(r * 1.55 - cs * 0.7, -r * 0.35);
   c.closePath();
   c.fill();
-
   c.restore();
 };
