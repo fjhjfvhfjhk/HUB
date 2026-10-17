@@ -1,0 +1,1489 @@
+<!DOCTYPE html><html lang="ru">
+<head><script>
+(function() {
+  function sendError(msg, stack, lineno, colno) {
+    try {
+      window.parent.postMessage({
+        type: "BDS_VISUALIZER_ERROR",
+        message: String(msg || "Script error"),
+        stack: stack ? String(stack) : null,
+        lineno: lineno ?? null,
+        colno: colno ?? null
+      }, "*");
+    } catch(e) {}
+  }
+  window.addEventListener("error", function(e) {
+    sendError(e.message, e.error ? e.error.stack : null, e.lineno, e.colno);
+  });
+  window.addEventListener("unhandledrejection", function(e) {
+    var reason = e.reason;
+    var msg = reason ? (reason.message || String(reason)) : "Unhandled Promise Rejection";
+    var stack = reason && reason.stack ? reason.stack : null;
+    sendError(msg, stack);
+  });
+})();
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#070a14">
+<title>Гравитационная песочница — Mega</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+    background: #070a14;
+    color: #e5e7eb;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+  }
+#field {
+position: fixed;
+top: 0; right: 0; bottom: 0; left: 0;
+z-index: 1;
+overflow: hidden;
+touch-action: none;
+background: #070a14;
+}
+
+/* Звёздное небо с параллаксом */
+#stars {
+position: absolute;
+inset: 0;
+background-image:
+radial-gradient(1.5px 1.5px at 27px 43px, rgba(255,255,255,0.9), transparent 100%),
+radial-gradient(1px 1px at 180px 90px, rgba(200,220,255,0.7), transparent 100%),
+radial-gradient(1px 1px at 90px 220px, rgba(255,255,255,0.5), transparent 100%),
+radial-gradient(1.2px 1.2px at 300px 150px, rgba(180,200,255,0.8), transparent 100%),
+radial-gradient(0.8px 0.8px at 250px 290px, rgba(255,255,255,0.4), transparent 100%),
+radial-gradient(1px 1px at 40px 320px, rgba(200,220,255,0.6), transparent 100%),
+radial-gradient(1.4px 1.4px at 340px 330px, rgba(255,255,255,0.75), transparent 100%),
+radial-gradient(0.8px 0.8px at 130px 60px, rgba(255,255,255,0.45), transparent 100%);
+background-size: 400px 400px;
+background-repeat: repeat;
+background-position: 0 0;
+will-change: background-position;
+opacity: 0.9;
+pointer-events: none;
+}
+
+#layer {
+position: absolute;
+top: 0; left: 0;
+width: 0; height: 0;
+transform-origin: 0 0;
+will-change: transform;
+pointer-events: none;
+}
+
+/* Мировые границы */
+#world-rect {
+position: absolute;
+border: 1px dashed rgba(96,165,250,0.18);
+border-radius: 4px;
+pointer-events: none;
+}
+
+.body {
+position: absolute;
+top: 0; left: 0;
+border-radius: 50%;
+pointer-events: none;
+backface-visibility: hidden;
+}
+.ghost {
+position: absolute;
+top: 0; left: 0;
+border-radius: 50%;
+pointer-events: none;
+will-change: opacity;
+}
+
+/* SVG overlay */
+#overlay {
+position: fixed;
+top: 0; left: 0;
+z-index: 5;
+pointer-events: none;
+display: block;
+}
+
+/* HUD */
+.hud {
+position: fixed;
+top: calc(8px + env(safe-area-inset-top, 0px));
+left: 8px; right: 8px;
+z-index: 20;
+display: flex;
+gap: 6px;
+flex-wrap: wrap;
+pointer-events: none;
+align-items: flex-start;
+}
+.chip {
+background: rgba(15,20,35,0.75);
+border: 1px solid rgba(96,165,250,0.18);
+border-radius: 999px;
+padding: 3px 10px;
+font-size: 11px;
+font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+color: #9ca3af;
+backdrop-filter: blur(6px);
+-webkit-backdrop-filter: blur(6px);
+}
+.chip b { color: #60a5fa; font-weight: 600; }
+
+.hud .spacer { flex: 1; pointer-events: none; }
+
+.zoom-box {
+pointer-events: auto;
+display: flex;
+gap: 4px;
+}
+.zoom-box button {
+width: 34px;
+height: 30px;
+padding: 0;
+font-size: 15px;
+background: rgba(15,20,35,0.78);
+border: 1px solid rgba(96,165,250,0.25);
+color: #cbd5e1;
+backdrop-filter: blur(6px);
+-webkit-backdrop-filter: blur(6px);
+}
+.zoom-box button:active { background: rgba(96,165,250,0.25); }
+.zoom-box button:hover { color: #60a5fa; border-color: rgba(96,165,250,0.6); }
+
+.hint {
+position: fixed;
+left: 0; right: 0;
+bottom: 320px;
+text-align: center;
+font-size: 11px;
+color: rgba(148,163,184,0.7);
+pointer-events: none;
+z-index: 20;
+padding: 0 16px;
+transition: opacity .4s ease;
+line-height: 1.5;
+}
+
+/* Controls */
+.controls {
+position: fixed;
+left: 0; right: 0; bottom: 0;
+z-index: 30;
+background: rgba(10,14,24,0.92);
+backdrop-filter: blur(14px);
+-webkit-backdrop-filter: blur(14px);
+border-top: 1px solid rgba(96,165,250,0.15);
+padding: 7px 10px calc(9px + env(safe-area-inset-bottom, 0px));
+display: flex;
+flex-direction: column;
+gap: 6px;
+}
+
+.line { display: flex; align-items: center; gap: 6px; }
+
+button {
+font: inherit;
+font-size: 12px;
+border: 1px solid rgba(96,165,250,0.18);
+background: rgba(255,255,255,0.04);
+color: #cbd5e1;
+border-radius: 9px;
+padding: 0 10px;
+height: 34px;
+min-width: 34px;
+cursor: pointer;
+white-space: nowrap;
+flex-shrink: 0;
+touch-action: manipulation;
+transition: background .12s, color .12s, border-color .12s;
+}
+button:active { transform: translateY(1px); }
+button.active {
+background: rgba(96,165,250,0.85);
+border-color: #60a5fa;
+color: #0a0e1a;
+font-weight: 600;
+}
+button.active:hover { color: #0a0e1a; }
+button:hover { border-color: rgba(96,165,250,0.5); color: #93c5fd; }
+
+.seg { display: flex; gap: 5px; flex: 1 1 auto; min-width: 0; }
+.seg button { flex: 1 1 0; padding: 0 4px; min-width: 0; font-size: 11.5px; }
+
+.slider-row {
+display: grid;
+grid-template-columns: 58px 1fr 44px;
+align-items: center;
+gap: 8px;
+height: 26px;
+}
+.slider-row .lbl {
+font-size: 10.5px; font-weight: 600;
+letter-spacing: .04em; text-transform: uppercase;
+color: #64748b;
+}
+.slider-row .val {
+font-size: 11px;
+font-family: ui-monospace, Menlo, monospace;
+color: #94a3b8;
+text-align: right;
+}
+input[type=range] {
+-webkit-appearance: none; appearance: none;
+width: 100%; height: 22px;
+background: transparent; margin: 0;
+touch-action: pan-x;
+}
+input[type=range]::-webkit-slider-runnable-track {
+height: 4px; border-radius: 2px; background: rgba(148,163,184,0.2);
+}
+input[type=range]::-webkit-slider-thumb {
+-webkit-appearance: none; appearance: none;
+width: 18px; height: 18px; border-radius: 50%;
+background: #60a5fa;
+border: 3px solid #0a0e1a;
+box-shadow: 0 0 8px rgba(96,165,250,0.6);
+margin-top: -7px;
+}
+input[type=range]::-moz-range-track {
+height: 4px; border-radius: 2px; background: rgba(148,163,184,0.2);
+}
+input[type=range]::-moz-range-thumb {
+width: 16px; height: 16px; border-radius: 50%;
+background: #60a5fa; border: 3px solid #0a0e1a;
+box-shadow: 0 0 8px rgba(96,165,250,0.6);
+}
+</style>
+<style>
+:root {
+  --v-bg: #ffffff;
+  --v-panel: #ffffff;
+  --v-border: #e5e5e5;
+  --v-border-strong: #d1d5db;
+  --v-accent: #4d6bfe;
+  --v-accent-glow: rgba(77, 107, 254, 0.1);
+  --v-text: #0d0d0d;
+  --v-text-secondary: #6b6b6b;
+  --v-text-dim: #999999;
+  --v-radius: 12px;
+  --v-radius-sm: 8px;
+  --v-shadow: 0 2px 12px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04);
+}
+body {
+  margin: 0;
+  padding: clamp(12px, 2vw, 28px);
+  background: var(--v-bg);
+  color: var(--v-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--v-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--v-border-strong);
+}
+.v-card {
+  background: var(--v-panel);
+  border: 1px solid var(--v-border);
+  border-radius: var(--v-radius);
+  padding: clamp(1rem, 2vw, 1.5rem);
+  box-shadow: var(--v-shadow);
+  animation: v-fade-in 0.25s ease-out;
+}
+.v-glass {
+  background: transparent;
+  border: 1px solid var(--v-border);
+  border-radius: var(--v-radius-sm);
+}
+.v-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0 0 1rem 0;
+  color: var(--v-text);
+  border-bottom: 2px solid var(--v-border);
+  padding-bottom: 6px;
+  display: inline-block;
+}
+.v-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 1.5rem;
+}
+.v-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--v-text-secondary);
+}
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: var(--v-border);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+  margin: 8px 0;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--v-accent);
+  border: 2px solid var(--v-panel);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--v-accent);
+  border: 2px solid var(--v-panel);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  cursor: pointer;
+}
+input[type="text"],
+input[type="number"],
+select,
+textarea {
+  background: var(--v-bg);
+  color: var(--v-text);
+  border: 1px solid var(--v-border);
+  border-radius: var(--v-radius-sm);
+  padding: 8px 12px;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+input[type="text"]:focus,
+input[type="number"]:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--v-accent);
+  box-shadow: 0 0 0 2px var(--v-accent-glow);
+}
+select {
+  cursor: pointer;
+}
+textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+.v-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.v-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.8125rem;
+  color: var(--v-accent);
+  font-weight: 700;
+  background: var(--v-accent-glow);
+  padding: 3px 10px;
+  border-radius: var(--v-radius-sm);
+}
+button.v-btn {
+  background: var(--v-accent);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--v-radius-sm);
+  padding: 10px 18px;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+}
+button.v-btn:hover {
+  filter: brightness(0.9);
+  transform: translateY(-1px);
+}
+button.v-btn:active {
+  transform: translateY(0);
+}
+button.v-btn-outline {
+  background: transparent;
+  color: var(--v-accent);
+  border: 1px solid var(--v-accent);
+}
+button.v-btn-outline:hover {
+  background: var(--v-accent-glow);
+}
+.v-animate-float {
+  animation: v-float 3s ease-in-out infinite;
+}
+@keyframes v-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-5px); }
+}
+pre, code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.8125rem;
+}
+pre {
+  background: var(--v-bg);
+  border: 1px solid var(--v-border);
+  border-radius: var(--v-radius-sm);
+  padding: 12px 16px;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+code {
+  background: var(--v-accent-glow);
+  color: var(--v-accent);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+}
+input[type="checkbox"] {
+  accent-color: var(--v-accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+canvas {
+  width: 100%;
+  border: 1px solid var(--v-border-strong);
+  border-radius: var(--v-radius-sm);
+  background: var(--v-panel);
+}
+@keyframes v-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+  </style></head>
+<body><div id="field">
+  <div id="stars"></div>
+  <div id="layer">
+    <div id="world-rect"></div>
+  </div>
+</div><svg id="overlay">
+  <defs>
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#67e8f9"/>
+    </marker>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <polyline id="predict" fill="none" stroke="#67e8f9" stroke-width="1.8"
+            stroke-dasharray="5 5" stroke-linecap="round" opacity="0.75" filter="url(#glow)"/>
+  <line id="aim-line" x1="0" y1="0" x2="0" y2="0"
+        stroke="#67e8f9" stroke-width="2.4" stroke-dasharray="10 6"
+        opacity="0.95" marker-end="url(#arrowhead)" filter="url(#glow)"/>
+  <circle id="aim-origin" cx="0" cy="0" r="14"
+          fill="rgba(103,232,249,0.2)" stroke="#67e8f9" stroke-width="1.6" filter="url(#glow)"/>
+</svg><div class="hud">
+  <div class="chip">тел <b id="cCount">0</b></div>
+  <div class="chip">G <b id="cG">1.00</b></div>
+  <div class="chip">× <b id="cZ">1.0</b></div>
+  <div class="spacer"></div>
+  <div class="zoom-box">
+    <button id="zOut" aria-label="Уменьшить">−</button>
+    <button id="zReset" aria-label="Сбросить">⌖</button>
+    <button id="zIn" aria-label="Увеличить">+</button>
+  </div>
+</div><div class="hint" id="hint">потяни — запустить тело<br>двумя пальцами — зум и панорама</div><div class="controls">
+  <div class="line">
+    <div class="seg" id="presets">
+      <button data-p="solar" class="active">Солнечная</button>
+      <button data-p="binary">Двойная</button>
+      <button data-p="cloud">Облако</button>
+      <button data-p="figure8">Фигура-8</button>
+      <button data-p="empty">Пусто</button>
+    </div>
+  </div>  <div class="line">
+    <div class="seg" id="masses">
+      <button data-m="30">Малая</button>
+      <button data-m="300" class="active">Средняя</button>
+      <button data-m="4000">Большая</button>
+    </div>
+    <button id="pause" style="width:38px;padding:0;">⏸</button>
+    <button id="clear" style="width:38px;padding:0;">✕</button>
+  </div>  <div class="line">
+    <div class="seg" id="bounds">
+      <button data-b="bounce" class="active">Отскок</button>
+      <button data-b="wrap">Проход</button>
+      <button data-b="open">Свободно</button>
+    </div>
+    <div class="seg" id="collide">
+      <button data-c="merge" class="active">Слипание</button>
+      <button data-c="bounce">Удар</button>
+    </div>
+  </div>  <div class="slider-row">
+    <span class="lbl">Гравит.</span>
+    <input type="range" id="g" min="0" max="2" step="0.02" value="1">
+    <span class="val" id="gv">1.00</span>
+  </div>
+  <div class="slider-row">
+    <span class="lbl">След</span>
+    <input type="range" id="trail" min="0" max="3" step="1" value="2">
+    <span class="val" id="tv">средн.</span>
+  </div>
+  <div class="slider-row">
+    <span class="lbl">Скорость</span>
+    <input type="range" id="speed" min="0" max="3" step="0.05" value="1">
+    <span class="val" id="sv">1.0</span>
+  </div>
+</div><script>
+(function () {
+  'use strict';
+
+  var IS_TOUCH = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
+  var MAX_BODIES = IS_TOUCH ? 80 : 150;
+  var MAX_SUBSTEPS = IS_TOUCH ? 16 : 32;
+  var MAX_GHOSTS = IS_TOUCH ? 160 : 280;
+  var PREDICT_STEPS = IS_TOUCH ? 70 : 110;
+  var PREDICT_THROTTLE = IS_TOUCH ? 70 : 50;
+
+  var field = document.getElementById('field');
+  var stars = document.getElementById('stars');
+  var layer = document.getElementById('layer');
+  var worldRect = document.getElementById('world-rect');
+  var overlay = document.getElementById('overlay');
+  var predict = document.getElementById('predict');
+  var aimLine = document.getElementById('aim-line');
+  var aimOrigin = document.getElementById('aim-origin');
+  var hintEl = document.getElementById('hint');
+  var cCount = document.getElementById('cCount');
+  var cG = document.getElementById('cG');
+  var cZ = document.getElementById('cZ');
+
+  var W = 0, H = 0, PLAY_H = 0;
+
+  // Мировые размеры
+  var WORLD_HW = 500;
+  var WORLD_HH = 750;
+
+  var PALETTE = ['#60a5fa', '#34d399', '#a78bfa', '#fb923c', '#f87171', '#4ade80', '#f472b6', '#38bdf8'];
+  var STAR_COLOR = '#fbbf24';
+
+  // Camera
+  var cam = { x: 0, y: 0, scale: 1 };
+  var MIN_SCALE = 0.12;
+  var MAX_SCALE = 4;
+
+  var bodies = [];
+  var G = 1;
+  var paused = false;
+  var spawnMass = 300;
+  var speedMul = 1;
+  var boundMode = 'bounce';
+  var collisionMode = 'merge';
+  var trailLevel = 2;
+  var trailInterval = 55;
+  var trailLife = 750;
+  var trailAlpha = 0.55;
+
+  var FIXED = 0.028;
+  var TIME_PER_MS = 0.009;
+  var acc = 0;
+  var last = performance.now();
+  var frameCounter = 0;
+  var hintHidden = false;
+  var lastGhost = 0;
+  var lastPredictAt = 0;
+
+  var elMap = new WeakMap();
+  var ghosts = [];
+
+  function radiusFor(m) { return Math.max(5, Math.pow(m, 0.24) * 1.9); }
+  function pickColor() { return PALETTE[(Math.random() * PALETTE.length) | 0]; }
+  function hexA(hex, a) {
+    var h = hex.charAt(0) === '#' ? hex.slice(1) : hex;
+    return 'rgba(' +
+      parseInt(h.substring(0, 2), 16) + ',' +
+      parseInt(h.substring(2, 4), 16) + ',' +
+      parseInt(h.substring(4, 6), 16) + ',' + a + ')';
+  }
+  function makeBody(x, y, vx, vy, m, color) {
+    return { x: x, y: y, vx: vx, vy: vy, ax: 0, ay: 0, m: m, r: radiusFor(m), color: color || pickColor() };
+  }
+  function capBodies() {
+    while (bodies.length > MAX_BODIES) bodies.splice(1, 1);
+  }
+
+  /* ---------- sizing ---------- */
+
+  function viewportSize() {
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    if (!w || w < 50) w = document.documentElement.clientWidth || document.body.clientWidth || 360;
+    if (!h || h < 50) h = document.documentElement.clientHeight || document.body.clientHeight || 640;
+    return { w: Math.max(200, Math.round(w)), h: Math.max(200, Math.round(h)) };
+  }
+
+  function controlsHeight() {
+    var c = document.querySelector('.controls');
+    if (!c) return 240;
+    var r = c.getBoundingClientRect();
+    if (r.height < 40 || r.height > 700) return 240;
+    return r.height;
+  }
+
+  function fitScale() {
+    var sx = W / (WORLD_HW * 2);
+    var sy = PLAY_H / (WORLD_HH * 2);
+    return Math.min(sx, sy) * 0.88;
+  }
+
+  function resetCamera() {
+    cam.x = 0;
+    cam.y = 0;
+    cam.scale = fitScale();
+  }
+
+  function resize() {
+    var v = viewportSize();
+    W = v.w;
+    H = v.h;
+    PLAY_H = Math.max(180, H - controlsHeight());
+
+    overlay.setAttribute('width', W);
+    overlay.setAttribute('height', H);
+    overlay.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+
+    worldRect.style.left = (-WORLD_HW) + 'px';
+    worldRect.style.top = (-WORLD_HH) + 'px';
+    worldRect.style.width = (WORLD_HW * 2) + 'px';
+    worldRect.style.height = (WORLD_HH * 2) + 'px';
+    worldRect.style.display = (boundMode === 'open') ? 'none' : 'block';
+
+    hintEl.style.bottom = (controlsHeight() + 20) + 'px';
+
+    // сброс камеры при изменении размера
+    resetCamera();
+    updateCameraTransform();
+    updateStars();
+  }
+
+  function updateCameraTransform() {
+    var tx = W / 2 - cam.x * cam.scale;
+    var ty = PLAY_H / 2 - cam.y * cam.scale;
+    layer.style.transform = 'translate(' + tx.toFixed(2) + 'px,' + ty.toFixed(2) + 'px) scale(' + cam.scale.toFixed(4) + ')';
+    cZ.textContent = cam.scale.toFixed(2);
+  }
+
+  function updateStars() {
+    var px = -(cam.x * cam.scale * 0.18) % 400;
+    var py = -(cam.y * cam.scale * 0.18) % 400;
+    stars.style.backgroundPosition = px + 'px ' + py + 'px';
+  }
+
+  /* ---------- DOM sync ---------- */
+
+  function createEl(b) {
+    var el = document.createElement('div');
+    el.className = 'body';
+    el.style.backgroundColor = b.color;
+    layer.appendChild(el);
+    elMap.set(b, el);
+    return el;
+  }
+
+  function applyBodyStyle(el, b) {
+    var size = b.r * 2;
+    var curR = parseFloat(el.dataset.r || '0');
+    if (Math.abs(curR - b.r) > 0.15) {
+      el.style.width = size + 'px';
+      el.style.height = size + 'px';
+      el.dataset.r = b.r;
+    }
+    el.style.transform = 'translate3d(' + (b.x - b.r).toFixed(1) + 'px,' + (b.y - b.r).toFixed(1) + 'px,0)';
+
+    // многослойное свечение
+    if (b.m > 20000) {
+      el.style.boxShadow =
+        '0 0 ' + (b.r * 2).toFixed(1) + 'px ' + (b.r * 0.8).toFixed(1) + 'px ' + hexA(b.color, 0.85) +
+        ',0 0 ' + (b.r * 6).toFixed(1) + 'px ' + (b.r * 2).toFixed(1) + 'px ' + hexA(b.color, 0.35) +
+        ',0 0 ' + (b.r * 12).toFixed(1) + 'px ' + (b.r * 4).toFixed(1) + 'px ' + hexA(b.color, 0.15);
+    } else if (b.m > 2000) {
+      el.style.boxShadow =
+        '0 0 ' + (b.r * 1.6).toFixed(1) + 'px ' + (b.r * 0.5).toFixed(1) + 'px ' + hexA(b.color, 0.7) +
+        ',0 0 ' + (b.r * 4).toFixed(1) + 'px ' + (b.r * 1.5).toFixed(1) + 'px ' + hexA(b.color, 0.25);
+    } else {
+      el.style.boxShadow = '0 0 ' + (b.r * 1.2).toFixed(1) + 'px ' + hexA(b.color, 0.6);
+    }
+  }
+
+  function syncDOM() {
+    for (var i = 0; i < bodies.length; i++) {
+      var b = bodies[i];
+      var el = elMap.get(b) || createEl(b);
+      applyBodyStyle(el, b);
+    }
+    for (var k = layer.children.length - 1; k >= 0; k--) {
+      var el2 = layer.children[k];
+      if (el2.className !== 'body') continue;
+      var found = false;
+      for (var j = 0; j < bodies.length; j++) {
+        if (elMap.get(bodies[j]) === el2) { found = true; break; }
+      }
+      if (!found) layer.removeChild(el2);
+    }
+  }
+
+  /* ---------- trails ---------- */
+
+  function spawnGhost(b) {
+    var size = b.r * 2.2;
+    var el = document.createElement('div');
+    el.className = 'ghost';
+    el.style.width = size + 'px';
+    el.style.height = size + 'px';
+    el.style.backgroundColor = b.color;
+    el.style.boxShadow = '0 0 ' + (b.r * 2).toFixed(1) + 'px ' + hexA(b.color, 0.7);
+    el.style.transform = 'translate3d(' + (b.x - size / 2).toFixed(1) + 'px,' + (b.y - size / 2).toFixed(1) + 'px,0)';
+    el.style.opacity = String(trailAlpha);
+    layer.appendChild(el);
+    ghosts.push({ el: el, born: performance.now(), life: trailLife, alpha: trailAlpha });
+    if (ghosts.length > MAX_GHOSTS) {
+      var g = ghosts.shift();
+      if (g.el.parentNode) g.el.parentNode.removeChild(g.el);
+    }
+  }
+
+  function updateGhosts(now) {
+    for (var i = ghosts.length - 1; i >= 0; i--) {
+      var g = ghosts[i];
+      var age = now - g.born;
+      if (age >= g.life) {
+        if (g.el.parentNode) g.el.parentNode.removeChild(g.el);
+        ghosts.splice(i, 1);
+      } else {
+        var t = age / g.life;
+        g.el.style.opacity = (g.alpha * (1 - t) * (1 - t)).toFixed(3);
+      }
+    }
+  }
+
+  function clearGhosts() {
+    for (var i = 0; i < ghosts.length; i++) {
+      if (ghosts[i].el.parentNode) ghosts[i].el.parentNode.removeChild(ghosts[i].el);
+    }
+    ghosts = [];
+  }
+
+  /* ---------- physics ---------- */
+
+  function physics(dt) {
+    var n = bodies.length;
+    if (n < 2) return;
+    var soft = IS_TOUCH ? 60 : 40;
+    var i, j, a, b, dx, dy, d2, inv;
+
+    for (i = 0; i < n; i++) { bodies[i].ax = 0; bodies[i].ay = 0; }
+
+    for (i = 0; i < n; i++) {
+      a = bodies[i];
+      for (j = i + 1; j < n; j++) {
+        b = bodies[j];
+        dx = b.x - a.x;
+        dy = b.y - a.y;
+        d2 = dx * dx + dy * dy + soft;
+        inv = G / (d2 * Math.sqrt(d2));
+        a.ax += inv * b.m * dx;
+        a.ay += inv * b.m * dy;
+        b.ax -= inv * a.m * dx;
+        b.ay -= inv * a.m * dy;
+      }
+    }
+
+    for (i = 0; i < n; i++) {
+      b = bodies[i];
+      b.vx += b.ax * dt;
+      b.vy += b.ay * dt;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+    }
+  }
+
+  function applyBounds() {
+    if (boundMode === 'open') return;
+    for (var i = 0; i < bodies.length; i++) {
+      var b = bodies[i];
+      var r = b.r;
+
+      if (boundMode === 'bounce') {
+        if (b.x - r < -WORLD_HW) { b.x = -WORLD_HW + r; b.vx = -b.vx * 0.88; }
+        if (b.x + r > WORLD_HW)  { b.x = WORLD_HW - r;  b.vx = -b.vx * 0.88; }
+        if (b.y - r < -WORLD_HH) { b.y = -WORLD_HH + r; b.vy = -b.vy * 0.88; }
+        if (b.y + r > WORLD_HH)  { b.y = WORLD_HH - r;  b.vy = -b.vy * 0.88; }
+      } else if (boundMode === 'wrap') {
+        var wx = WORLD_HW * 2, wy = WORLD_HH * 2;
+        if (b.x < -WORLD_HW - r) b.x += wx;
+        else if (b.x > WORLD_HW + r) b.x -= wx;
+        if (b.y < -WORLD_HH - r) b.y += wy;
+        else if (b.y > WORLD_HH + r) b.y -= wy;
+      }
+    }
+  }
+
+  function handleCollisions() {
+    for (var i = 0; i < bodies.length; i++) {
+      for (var j = i + 1; j < bodies.length; j++) {
+        var a = bodies[i], b = bodies[j];
+        var dx = b.x - a.x, dy = b.y - a.y;
+        var d2 = dx * dx + dy * dy;
+        var rr = (a.r + b.r) * 0.8;
+
+        if (d2 >= rr * rr) continue;
+
+        var d = Math.sqrt(d2) || 0.01;
+
+        if (collisionMode === 'merge') {
+          var M = a.m + b.m;
+          a.x = (a.x * a.m + b.x * b.m) / M;
+          a.y = (a.y * a.m + b.y * b.m) / M;
+          a.vx = (a.vx * a.m + b.vx * b.m) / M;
+          a.vy = (a.vy * a.m + b.vy * b.m) / M;
+          a.m = M;
+          a.r = radiusFor(M);
+          bodies.splice(j, 1);
+          j--;
+        } else {
+          // упругий отскок
+          var nx = dx / d, ny = dy / d;
+          var dvx = b.vx - a.vx, dvy = b.vy - a.vy;
+          var dvn = dvx * nx + dvy * ny;
+          // расталкивание, если сближаются
+          if (dvn < 0) {
+            var e = 0.9;
+            var invM1 = 1 / a.m, invM2 = 1 / b.m;
+            var jImp = -(1 + e) * dvn / (invM1 + invM2);
+            a.vx -= jImp * nx * invM1;
+            a.vy -= jImp * ny * invM1;
+            b.vx += jImp * nx * invM2;
+            b.vy += jImp * ny * invM2;
+          }
+          // разводим по позициям
+          var overlap = rr - d;
+          var totalInv = 1 / a.m + 1 / b.m;
+          a.x -= nx * overlap * (1 / a.m) / totalInv;
+          a.y -= ny * overlap * (1 / a.m) / totalInv;
+          b.x += nx * overlap * (1 / b.m) / totalInv;
+          b.y += ny * overlap * (1 / b.m) / totalInv;
+        }
+      }
+    }
+  }
+
+  /* ---------- prediction ---------- */
+
+  function predictPath(startX, startY, startVx, startVy, mass) {
+    var probe = { x: startX, y: startY, vx: startVx, vy: startVy };
+    var dt = 0.08;
+    var steps = PREDICT_STEPS;
+    var soft = 60;
+    var n = bodies.length;
+    var path = new Array(steps);
+
+    for (var s = 0; s < steps; s++) {
+      var ax = 0, ay = 0;
+      for (var i = 0; i < n; i++) {
+        var b = bodies[i];
+        var dx = b.x - probe.x, dy = b.y - probe.y;
+        var d2 = dx * dx + dy * dy + soft;
+        var inv = G * b.m / (d2 * Math.sqrt(d2));
+        ax += inv * dx;
+        ay += inv * dy;
+      }
+      probe.vx += ax * dt;
+      probe.vy += ay * dt;
+      probe.x += probe.vx * dt;
+      probe.y += probe.vy * dt;
+      path[s] = probe.x.toFixed(1) + ',' + probe.y.toFixed(1);
+    }
+    return path;
+  }
+
+  function worldToScreen(wx, wy) {
+    return {
+      x: (wx - cam.x) * cam.scale + W / 2,
+      y: (wy - cam.y) * cam.scale + PLAY_H / 2
+    };
+  }
+  function screenToWorld(sx, sy) {
+    return {
+      x: (sx - W / 2) / cam.scale + cam.x,
+      y: (sy - PLAY_H / 2) / cam.scale + cam.y
+    };
+  }
+
+  /* ---------- aim overlay ---------- */
+
+  var drag = { active: false, id: null, x0: 0, y0: 0, x1: 0, y1: 0 };
+
+  function showAim() {
+    var x0 = drag.x0, y0 = drag.y0, x1 = drag.x1, y1 = drag.y1;
+    var len = Math.hypot(x1 - x0, y1 - y0);
+
+    overlay.style.display = 'block';
+    aimOrigin.setAttribute('cx', x0);
+    aimOrigin.setAttribute('cy', y0);
+    aimOrigin.setAttribute('r', Math.max(6, radiusFor(spawnMass) * cam.scale + 2));
+
+    if (len >= 6) {
+      aimLine.setAttribute('x1', x0);
+      aimLine.setAttribute('y1', y0);
+      aimLine.setAttribute('x2', x1);
+      aimLine.setAttribute('y2', y1);
+      aimLine.style.display = 'block';
+
+      // prediction
+      var now = performance.now();
+      if (now - lastPredictAt > PREDICT_THROTTLE) {
+        lastPredictAt = now;
+        var wStart = screenToWorld(x0, y0);
+        var vx = (x1 - x0) * 0.085;
+        var vy = (y1 - y0) * 0.085;
+        var vmax = 45;
+        var vlen = Math.hypot(vx, vy);
+        if (vlen > vmax) { vx = vx / vlen * vmax; vy = vy / vlen * vmax; }
+        var worldPath = predictPath(wStart.x, wStart.y, vx, vy, spawnMass);
+        // transform to screen
+        var screenPts = [];
+        for (var i = 0; i < worldPath.length; i++) {
+          var parts = worldPath[i].split(',');
+          var sp = worldToScreen(parseFloat(parts[0]), parseFloat(parts[1]));
+          screenPts.push(sp.x.toFixed(1) + ',' + sp.y.toFixed(1));
+        }
+        predict.setAttribute('points', screenPts.join(' '));
+        predict.style.display = 'block';
+      }
+    } else {
+      aimLine.style.display = 'none';
+      predict.style.display = 'none';
+    }
+  }
+
+  function hideAim() {
+    overlay.style.display = 'none';
+    predict.style.display = 'none';
+    aimLine.style.display = 'none';
+  }
+
+  /* ---------- presets ---------- */
+
+  function presetSolar() {
+    bodies = []; clearDOM(); clearGhosts();
+    bodies.push(makeBody(0, 0, 0, 0, 60000, STAR_COLOR));
+    var N = IS_TOUCH ? 7 : 9;
+    for (var i = 0; i < N; i++) {
+      var ang = (i / N) * Math.PI * 2 + Math.random() * 0.35;
+      var dist = 90 + i * 42 + Math.random() * 16;
+      var m = 20 + Math.random() * 160;
+      var v = Math.sqrt(G * 60000 / dist) * (0.96 + Math.random() * 0.08);
+      bodies.push(makeBody(
+        Math.cos(ang) * dist, Math.sin(ang) * dist,
+        -Math.sin(ang) * v, Math.cos(ang) * v, m
+      ));
+    }
+  }
+
+  function presetBinary() {
+    bodies = []; clearDOM(); clearGhosts();
+    var m = 30000, r = 110;
+    var v = Math.sqrt(G * m / (4 * r));
+    bodies.push(makeBody(-r, 0, 0, v, m, '#fbbf24'));
+    bodies.push(makeBody(r, 0, 0, -v, m, '#f59e0b'));
+    var N = IS_TOUCH ? 6 : 8;
+    for (var i = 0; i < N; i++) {
+      var ang = Math.random() * Math.PI * 2;
+      var dist = 220 + Math.random() * 130;
+      var pm = 20 + Math.random() * 120;
+      var pv = Math.sqrt(G * 2 * m / dist);
+      bodies.push(makeBody(
+        Math.cos(ang) * dist, Math.sin(ang) * dist,
+        -Math.sin(ang) * pv, Math.cos(ang) * pv, pm
+      ));
+    }
+  }
+
+  function presetCloud() {
+    bodies = []; clearDOM(); clearGhosts();
+    var N = IS_TOUCH ? 22 : 30;
+    for (var i = 0; i < N; i++) {
+      var ang = Math.random() * Math.PI * 2;
+      var dist = Math.sqrt(Math.random()) * 300;
+      var m = 200 + Math.random() * 2600;
+      var v = Math.sqrt(G * 18000 / (dist + 70)) * (0.55 + Math.random() * 0.45);
+      bodies.push(makeBody(
+        Math.cos(ang) * dist, Math.sin(ang) * dist,
+        -Math.sin(ang) * v, Math.cos(ang) * v, m
+      ));
+    }
+  }
+
+  function presetFigure8() {
+    // Классическое решение задачи трёх тел (Chenciner-Montgomery)
+    // Оригинал: G=1, m=1, p=±0.97, v~0.47, период 6.32
+    // Масштабируем: k=300, m=100000, v-множитель = sqrt(100000/300) ≈ 18.26
+    bodies = []; clearDOM(); clearGhosts();
+    var M = 100000;
+    var k = 300;
+    var vm = 18.26;
+    bodies.push(makeBody( k * 0.97000436, -k * 0.24308753,  vm * 0.466203685, vm * 0.43236573, M, '#60a5fa'));
+    bodies.push(makeBody(-k * 0.97000436,  k * 0.24308753,  vm * 0.466203685, vm * 0.43236573, M, '#f472b6'));
+    bodies.push(makeBody(0, 0, vm * -0.93240737, vm * -0.86473146, M, '#4ade80'));
+  }
+
+  function clearDOM() {
+    while (layer.firstChild) layer.removeChild(layer.firstChild);
+    layer.appendChild(worldRect);
+    elMap = new WeakMap();
+  }
+
+  function applyPreset(name) {
+    if (name === 'solar') presetSolar();
+    else if (name === 'binary') presetBinary();
+    else if (name === 'cloud') presetCloud();
+    else if (name === 'figure8') presetFigure8();
+    else { bodies = []; clearDOM(); clearGhosts(); }
+    acc = 0;
+    syncDOM();
+  }
+
+  /* ---------- main loop ---------- */
+
+  var starsDirty = false;
+  var lastCam = { x: 0, y: 0, scale: 1 };
+
+  function loop(now) {
+    var dtReal = Math.min(50, now - last);
+    last = now;
+
+    if (!paused) {
+      acc += dtReal * TIME_PER_MS * speedMul;
+      var guard = 0;
+      while (acc >= FIXED && guard < MAX_SUBSTEPS) {
+        physics(FIXED);
+        applyBounds();
+        handleCollisions();
+        acc -= FIXED;
+        guard++;
+      }
+      if (guard >= MAX_SUBSTEPS) acc = 0;
+      capBodies();
+      syncDOM();
+
+      if (trailLevel > 0 && now - lastGhost > trailInterval) {
+        lastGhost = now;
+        for (var i = 0; i < bodies.length; i++) {
+          var b = bodies[i];
+          var sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+          if (sp > 0.6) spawnGhost(b);
+        }
+      }
+    }
+
+    updateGhosts(now);
+
+    // Обновляем transform камеры, если она изменилась
+    if (cam.x !== lastCam.x || cam.y !== lastCam.y || cam.scale !== lastCam.scale) {
+      lastCam.x = cam.x; lastCam.y = cam.y; lastCam.scale = cam.scale;
+      updateCameraTransform();
+      updateStars();
+    }
+
+    // обновляем позиции SVG-прицела при активном драге
+    if (drag.active) {
+      // (обновление в showAim вызывается из pointermove; здесь — только при затишье)
+    }
+
+    if ((frameCounter++ % 10) === 0) {
+      cCount.textContent = String(bodies.length);
+      cG.textContent = G.toFixed(2);
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  /* ---------- input ---------- */
+
+  var pointers = {};   // id -> {x, y}
+  var pointerCount = 0;
+  var gesture = { active: false, ids: [], startDist: 0, startScale: 1, startMidX: 0, startMidY: 0, startCamX: 0, startCamY: 0 };
+
+  function getPoint(e) {
+    return { x: e.clientX, y: e.clientY };
+  }
+
+  function hideHint() {
+    if (hintHidden) return;
+    hintHidden = true;
+    hintEl.style.opacity = '0';
+    setTimeout(function () { hintEl.style.display = 'none'; }, 500);
+  }
+
+  function startDrag(p) {
+    drag.active = true;
+    drag.x0 = p.x; drag.y0 = p.y;
+    drag.x1 = p.x; drag.y1 = p.y;
+    showAim();
+  }
+  function moveDrag(p) {
+    if (!drag.active) return;
+    drag.x1 = p.x; drag.y1 = p.y;
+    showAim();
+  }
+  function cancelDrag() {
+    drag.active = false;
+    hideAim();
+  }
+  function endDrag() {
+    if (!drag.active) return;
+    drag.active = false;
+    hideAim();
+    hideHint();
+
+    var dx = drag.x1 - drag.x0;
+    var dy = drag.y1 - drag.y0;
+    var len = Math.hypot(dx, dy);
+
+    var w0 = screenToWorld(drag.x0, drag.y0);
+
+    if (len >= 6) {
+      var vx = dx * 0.085;
+      var vy = dy * 0.085;
+      var vmax = 45;
+      var vlen = Math.hypot(vx, vy);
+      if (vlen > vmax) { vx = vx / vlen * vmax; vy = vy / vlen * vmax; }
+      bodies.push(makeBody(w0.x, w0.y, vx, vy, spawnMass));
+    } else {
+      bodies.push(makeBody(w0.x, w0.y, 0, 0, spawnMass));
+    }
+    capBodies();
+    syncDOM();
+  }
+
+  function startGesture() {
+    var ids = Object.keys(pointers);
+    if (ids.length !== 2) return;
+    var p1 = pointers[ids[0]], p2 = pointers[ids[1]];
+    gesture.active = true;
+    gesture.ids = ids;
+    gesture.startDist = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+    gesture.startScale = cam.scale;
+    gesture.startMidX = (p1.x + p2.x) / 2;
+    gesture.startMidY = (p1.y + p2.y) / 2;
+    gesture.startCamX = cam.x;
+    gesture.startCamY = cam.y;
+  }
+
+  function updateGesture() {
+    if (!gesture.active) return;
+    var ids = gesture.ids;
+    var p1 = pointers[ids[0]], p2 = pointers[ids[1]];
+    if (!p1 || !p2) return;
+
+    var dist = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+    var midX = (p1.x + p2.x) / 2;
+    var midY = (p1.y + p2.y) / 2;
+
+    var newScale = gesture.startScale * (dist / gesture.startDist);
+    if (newScale < MIN_SCALE) newScale = MIN_SCALE;
+    if (newScale > MAX_SCALE) newScale = MAX_SCALE;
+
+    // world point под начальным mid
+    var wStartX = (gesture.startMidX - W / 2) / gesture.startScale + gesture.startCamX;
+    var wStartY = (gesture.startMidY - PLAY_H / 2) / gesture.startScale + gesture.startCamY;
+
+    // чтобы эта же точка оказалась под текущим mid
+    cam.scale = newScale;
+    cam.x = wStartX - (midX - W / 2) / newScale;
+    cam.y = wStartY - (midY - PLAY_H / 2) / newScale;
+  }
+
+  function endGestureIfNeeded() {
+    if (gesture.active && Object.keys(pointers).length < 2) {
+      gesture.active = false;
+      gesture.ids = [];
+    }
+  }
+
+  function handlePointerDown(e) {
+    pointers[e.pointerId] = getPoint(e);
+    pointerCount = Object.keys(pointers).length;
+
+    if (pointerCount === 1) {
+      startDrag(pointers[e.pointerId]);
+    } else if (pointerCount === 2) {
+      cancelDrag();
+      startGesture();
+    }
+
+    try { field.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault();
+  }
+
+  function handlePointerMove(e) {
+    if (!pointers[e.pointerId]) return;
+    pointers[e.pointerId] = getPoint(e);
+
+    if (gesture.active) {
+      updateGesture();
+    } else if (drag.active) {
+      moveDrag(pointers[e.pointerId]);
+    }
+    e.preventDefault();
+  }
+
+  function handlePointerUp(e) {
+    var wasDragging = drag.active && pointerCount === 1;
+    delete pointers[e.pointerId];
+    pointerCount = Object.keys(pointers).length;
+
+    if (wasDragging) endDrag();
+    endGestureIfNeeded();
+
+    try { field.releasePointerCapture(e.pointerId); } catch (err) {}
+  }
+
+  if ('onpointerdown' in window) {
+    field.addEventListener('pointerdown', handlePointerDown, { passive: false });
+    field.addEventListener('pointermove', handlePointerMove, { passive: false });
+    field.addEventListener('pointerup', handlePointerUp);
+    field.addEventListener('pointercancel', function (e) {
+      delete pointers[e.pointerId];
+      pointerCount = Object.keys(pointers).length;
+      cancelDrag();
+      endGestureIfNeeded();
+    });
+  } else {
+    // fallback touch events
+    field.addEventListener('touchstart', function (e) {
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        var t = e.changedTouches[i];
+        pointers[t.identifier] = { x: t.clientX, y: t.clientY };
+      }
+      pointerCount = Object.keys(pointers).length;
+      if (pointerCount === 1) {
+        var p = pointers[Object.keys(pointers)[0]];
+        startDrag(p);
+      } else if (pointerCount === 2) {
+        cancelDrag();
+        startGesture();
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    field.addEventListener('touchmove', function (e) {
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        var t = e.changedTouches[i];
+        if (pointers[t.identifier]) pointers[t.identifier] = { x: t.clientX, y: t.clientY };
+      }
+      if (gesture.active) updateGesture();
+      else if (drag.active) moveDrag(pointers[Object.keys(pointers)[0]]);
+      e.preventDefault();
+    }, { passive: false });
+
+    field.addEventListener('touchend', function (e) {
+      var wasDragging = drag.active && pointerCount === 1;
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        delete pointers[e.changedTouches[i].identifier];
+      }
+      pointerCount = Object.keys(pointers).length;
+      if (wasDragging) endDrag();
+      endGestureIfNeeded();
+    });
+    field.addEventListener('touchcancel', function (e) {
+      for (var i = 0; i < e.changedTouches.length; i++) delete pointers[e.changedTouches[i].identifier];
+      pointerCount = Object.keys(pointers).length;
+      cancelDrag(); endGestureIfNeeded();
+    });
+
+    // mouse fallback
+    field.addEventListener('mousedown', function (e) { startDrag({ x: e.clientX, y: e.clientY }); });
+    window.addEventListener('mousemove', function (e) { if (drag.active) moveDrag({ x: e.clientX, y: e.clientY }); });
+    window.addEventListener('mouseup', function () { if (drag.active) endDrag(); });
+  }
+
+  field.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  // wheel zoom (desktop)
+  field.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    var factor = Math.exp(-e.deltaY * 0.0015);
+    var oldScale = cam.scale;
+    var newScale = oldScale * factor;
+    if (newScale < MIN_SCALE) newScale = MIN_SCALE;
+    if (newScale > MAX_SCALE) newScale = MAX_SCALE;
+
+    var w = screenToWorld(e.clientX, e.clientY);
+    cam.scale = newScale;
+    cam.x = w.x - (e.clientX - W / 2) / newScale;
+    cam.y = w.y - (e.clientY - PLAY_H / 2) / newScale;
+  }, { passive: false });
+
+  window.addEventListener('keydown', function (e) {
+    if (e.code === 'Space' && e.target === document.body) {
+      e.preventDefault();
+      togglePause();
+    }
+  });
+
+  /* ---------- controls ---------- */
+
+  var pauseBtn = document.getElementById('pause');
+  function togglePause() {
+    paused = !paused;
+    pauseBtn.textContent = paused ? '▶' : '⏸';
+    pauseBtn.classList.toggle('active', paused);
+  }
+  pauseBtn.addEventListener('click', togglePause);
+
+  document.getElementById('clear').addEventListener('click', function () {
+    bodies = []; clearDOM(); clearGhosts();
+  });
+
+  document.getElementById('presets').addEventListener('click', function (e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    Array.prototype.forEach.call(this.children, function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    applyPreset(btn.dataset.p);
+  });
+
+  document.getElementById('masses').addEventListener('click', function (e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    Array.prototype.forEach.call(this.children, function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    spawnMass = parseFloat(btn.dataset.m);
+  });
+
+  document.getElementById('bounds').addEventListener('click', function (e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    Array.prototype.forEach.call(this.children, function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    boundMode = btn.dataset.b;
+    worldRect.style.display = (boundMode === 'open') ? 'none' : 'block';
+  });
+
+  document.getElementById('collide').addEventListener('click', function (e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    Array.prototype.forEach.call(this.children, function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    collisionMode = btn.dataset.c;
+  });
+
+  var gSlider = document.getElementById('g');
+  var gv = document.getElementById('gv');
+  gSlider.addEventListener('input', function () {
+    G = parseFloat(this.value);
+    gv.textContent = G.toFixed(2);
+    cG.textContent = G.toFixed(2);
+  });
+
+  var tSlider = document.getElementById('trail');
+  var tv = document.getElementById('tv');
+  function applyTrail(v) {
+    trailLevel = v;
+    if (v === 0) { trailInterval = 99999; trailLife = 0; trailAlpha = 0; tv.textContent = 'выкл'; clearGhosts(); }
+    else if (v === 1) { trailInterval = 90; trailLife = 450; trailAlpha = 0.4; tv.textContent = 'коротк.'; }
+    else if (v === 2) { trailInterval = 55; trailLife = 750; trailAlpha = 0.55; tv.textContent = 'средн.'; }
+    else { trailInterval = 30; trailLife = 1200; trailAlpha = 0.62; tv.textContent = 'длин.'; }
+  }
+  tSlider.addEventListener('input', function () { applyTrail(parseInt(this.value, 10)); });
+
+  var sSlider = document.getElementById('speed');
+  var sv = document.getElementById('sv');
+  sSlider.addEventListener('input', function () {
+    speedMul = parseFloat(this.value);
+    sv.textContent = speedMul.toFixed(1);
+  });
+
+  // Zoom buttons
+  function zoomBy(factor, centerX, centerY) {
+    if (centerX === undefined) centerX = W / 2;
+    if (centerY === undefined) centerY = PLAY_H / 2;
+    var oldScale = cam.scale;
+    var newScale = oldScale * factor;
+    if (newScale < MIN_SCALE) newScale = MIN_SCALE;
+    if (newScale > MAX_SCALE) newScale = MAX_SCALE;
+    var w = screenToWorld(centerX, centerY);
+    cam.scale = newScale;
+    cam.x = w.x - (centerX - W / 2) / newScale;
+    cam.y = w.y - (centerY - PLAY_H / 2) / newScale;
+  }
+  document.getElementById('zIn').addEventListener('click', function () { zoomBy(1.3); });
+  document.getElementById('zOut').addEventListener('click', function () { zoomBy(1 / 1.3); });
+  document.getElementById('zReset').addEventListener('click', function () { resetCamera(); });
+
+  /* ---------- init ---------- */
+
+  applyTrail(parseInt(tSlider.value, 10));
+
+  function boot() {
+    resize();
+    if (bodies.length === 0) presetSolar();
+    updateCameraTransform();
+    updateStars();
+    syncDOM();
+  }
+
+  boot();
+  requestAnimationFrame(boot);
+  setTimeout(boot, 100);
+  setTimeout(boot, 400);
+
+  window.addEventListener('resize', function () { resize(); syncDOM(); });
+  window.addEventListener('orientationchange', function () {
+    setTimeout(function () { resize(); syncDOM(); }, 250);
+  });
+
+  requestAnimationFrame(loop);
+})();
+</script></body>
+</html>
