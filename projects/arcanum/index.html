@@ -18,19 +18,53 @@
   <canvas id="game"></canvas>
 
   <div class="screen active" id="screen-menu">
-    <div class="panel">
-      <div class="rune-row">✦ ✧ ✦</div>
-      <h1 class="title">АРКАНУМ</h1>
-      <p class="subtitle">Ты — последний маг академии.<br>Волны тьмы идут на тебя.</p>
-      <button class="btn btn-primary" id="btn-play">НАЧАТЬ БОЙ</button>
-      <button class="btn btn-book" id="btn-book">📖 КНИГА ДУШ</button>
-      <button class="btn btn-ghost" id="btn-fullscreen">🖥 ПОЛНЫЙ ЭКРАН</button>
-      <div class="hint">
+    <div class="panel menu-panel">
+      <div class="menu-corner-tl">✦</div>
+      <div class="menu-corner-tr">✦</div>
+      <div class="menu-corner-bl">✦</div>
+      <div class="menu-corner-br">✦</div>
+
+      <div class="menu-runes">✦ ✧ ✦</div>
+      <h1 class="title menu-title">АРКАНУМ</h1>
+      <div class="menu-divider">
+        <span class="menu-divider-line"></span>
+        <span class="menu-divider-rune">✧</span>
+        <span class="menu-divider-line"></span>
+      </div>
+      <p class="subtitle menu-subtitle">Ты — последний маг академии.<br>Волны тьмы идут на тебя.</p>
+
+      <div class="menu-actions">
+        <button class="btn btn-primary btn-with-icon" id="btn-play">
+          <span class="btn-icon">⚔</span>
+          <span class="btn-text">НАЧАТЬ БОЙ</span>
+        </button>
+        <button class="btn btn-book btn-with-icon" id="btn-book">
+          <span class="btn-icon">📖</span>
+          <span class="btn-text">КНИГА ДУШ</span>
+        </button>
+        <button class="btn btn-ghost btn-with-icon" id="btn-fullscreen">
+          <span class="btn-icon">🖥</span>
+          <span class="btn-text">ПОЛНЫЙ ЭКРАН</span>
+        </button>
+      </div>
+
+      <div class="menu-hints">
         <div class="hint-row"><span class="dot blue"></span><b>Левая половина</b> — палец двигает мага</div>
-        <div class="hint-row"><span class="dot gold"></span><b>Правая половина</b> — целься и держи, чтобы стрелять</div>
+        <div class="hint-row"><span class="dot gold"></span><b>Правая половина</b> — целься и держи</div>
         <div class="hint-row"><span class="dot violet"></span><b>WASD</b> — движение на клавиатуре</div>
       </div>
-      <div class="best">Рекорд: <span id="best-score">0</span> · Души: <span id="menu-souls">0</span> ✦</div>
+
+      <div class="menu-stats">
+        <div class="menu-stat">
+          <span class="menu-stat-label">РЕКОРД</span>
+          <span class="menu-stat-value" id="best-score">0</span>
+        </div>
+        <div class="menu-stat-divider"></div>
+        <div class="menu-stat">
+          <span class="menu-stat-label">ДУШИ</span>
+          <span class="menu-stat-value menu-stat-souls">✦ <span id="menu-souls">0</span></span>
+        </div>
+      </div>
     </div>
   </div>
 
