@@ -1,5 +1,6 @@
 /* ============================================================
-   GAME v6 — loadout заклинаний, 5 слотов, достижения
+   GAME v8 — фикс aim, усиление волн, индикаторы заклинаний,
+   фильтр multi+pierce
    ============================================================ */
 
 var Game = {
@@ -39,7 +40,8 @@ var Game = {
   vignetteCanvas: null,
   _bloodMoonCanvas: null,
   _hurtFlashCanvas: null,
-  // Tracking for achievements
+  _beamEffect: null,
+  _poisonClouds: [],
   runKills: 0,
   flawlessWaves: 0,
   currentWaveTookDamage: false,
@@ -107,7 +109,6 @@ var Game = {
       };
     }
 
-    // Defaults
     if (!this.meta.spellsUnlocked || this.meta.spellsUnlocked.length === 0) {
       this.meta.spellsUnlocked = ['nova', 'fireball', 'chain', 'meteor'];
     }
@@ -119,7 +120,6 @@ var Game = {
     if (!this.meta.totalKillsAllTime) this.meta.totalKillsAllTime = 0;
     if (!this.meta.bestWave) this.meta.bestWave = 0;
 
-    // Trim loadout to slots
     while (this.meta.spellsLoadout.length > this.meta.spellSlots) {
       this.meta.spellsLoadout.pop();
     }
@@ -489,6 +489,32 @@ var Game = {
     this.aimVec.x = dx / l; this.aimVec.y = dy / l;
   },
 
+  /* ============================================================
+     ГЛАВНЫЙ ФИКС: направление заклинаний
+     Если игрок прицеливается — aimVec.
+     Иначе — направление движения или facing.
+     ============================================================ */
+  getAimAngle: function () {
+    if (this.aimActive || this.mouseDown) {
+      return Math.atan2(this.aimVec.y, this.aimVec.x);
+    }
+    var p = this.player;
+    if (p) {
+      if (Math.abs(p.vx) > 10 || Math.abs(p.vy) > 10) {
+        return Math.atan2(p.vy, p.vx);
+      }
+      return p.facing;
+    }
+    return 0;
+  },
+
+  hasSpell: function (id) {
+    for (var i = 0; i < this.activeSpells.length; i++) {
+      if (this.activeSpells[i] && this.activeSpells[i].id === id) return true;
+    }
+    return false;
+  },
+
   readMovement: function () {
     if (this.moveTouchId !== null) {
       var d = this.touches[this.moveTouchId];
@@ -563,7 +589,6 @@ var Game = {
       var lvl = this.meta.stats[up.id] || 0;
       if (lvl > 0) up.apply(this.player, lvl);
     }
-    // Legacy spell upgrades applied passively
     for (var j = 0; j < META_SPELLS.length; j++) {
       var up2 = META_SPELLS[j];
       var lvl2 = this.meta.spells[up2.id] || 0;
@@ -575,6 +600,8 @@ var Game = {
 
     this.enemies = []; this.projectiles = []; this.enemyProjectiles = [];
     this.particles = []; this.pickups = []; this.damageTexts = []; this.meteors = [];
+    this._beamEffect = null;
+    this._poisonClouds = [];
     this.camX = -this.W / 2; this.camY = -this.H / 2;
     this.shakeAmt = 0;
     this.wave = 0; this.waveActive = false;
@@ -594,7 +621,6 @@ var Game = {
     this.lowQuality = false;
     this._qualityCooldown = 0;
     this.frameTimes = [];
-    // Run stats
     this.runKills = 0;
     this.flawlessWaves = 0;
     this.currentWaveTookDamage = false;
@@ -644,7 +670,6 @@ var Game = {
     this.setState('over');
   },
 
-  /* ============= ДОСТИЖЕНИЯ ============= */
   onPlayerDamaged: function () {
     this.currentWaveTookDamage = true;
     this.currentCritStreak = 0;
@@ -709,7 +734,6 @@ var Game = {
     }, 3200);
   },
 
-  /* ============= ВОЛНЫ ============= */
   startWave: function () {
     this.wave++;
     this.waveActive = true;
@@ -770,7 +794,8 @@ var Game = {
 
   buildWave: function (wave) {
     var list = [];
-    var budget = Math.min(4 + wave * 1.5, 24);
+    // УСИЛЕНО: 1.5→1.9, кап 24→26
+    var budget = Math.min(4 + wave * 1.9, 26);
     var pool = ['imp'];
     if (wave >= 2) pool.push('wraith');
     if (wave >= 3) pool.push('shade');
@@ -782,7 +807,8 @@ var Game = {
       if (spent + cost > budget + 2) break;
       list.push(type); spent += cost;
     }
-    var minCount = Math.min(4 + Math.floor(wave * 0.5), 20);
+    // УСИЛЕНО: min 0.5→0.6, кап 20→22
+    var minCount = Math.min(5 + Math.floor(wave * 0.6), 22);
     while (list.length < minCount) list.push('imp');
     var cap = this.getMaxEnemiesForCurrentWave();
     while (list.length > cap) list.pop();
@@ -837,13 +863,11 @@ var Game = {
       this.waveActive = false;
       this.score += 25 * this.wave * this.bloodMoonScoreMul;
 
-      // flawless check
       if (!this.currentWaveTookDamage) {
         this.flawlessWaves++;
       } else {
         this.flawlessWaves = 0;
       }
-      // blood moon survived
       if (this.bloodMoonActive) {
         this.bloodMoonsSurvived++;
       }
@@ -856,14 +880,52 @@ var Game = {
     }
   },
 
+  /* ============================================================
+     УЛУЧШЕНИЯ: фильтр maxLevel + исключение multi+pierce
+     ============================================================ */
   showUpgrades: function () {
     var waveEl = document.getElementById('up-wave');
     if (waveEl) waveEl.textContent = this.wave;
 
-    var pool = Utils.shuffle(UPGRADES.slice());
+    // Отфильтровать апгрейды по maxLevel
+    var available = [];
+    for (var i = 0; i < UPGRADES.length; i++) {
+      var up = UPGRADES[i];
+      if (up.maxLevel) {
+        var cur = (this.player.upgradeCounts && this.player.upgradeCounts[up.id]) || 0;
+        if (cur >= up.maxLevel) continue;
+      }
+      available.push(up);
+    }
+    if (available.length < 3) available = UPGRADES.slice(); // safety
+
+    var pool = Utils.shuffle(available.slice());
+    var choices = pool.slice(0, 3);
+
+    // Исключить одновременное появление multi + pierce
+    var hasMulti = false, hasPierce = false;
+    for (var j = 0; j < choices.length; j++) {
+      if (choices[j].id === 'multi') hasMulti = true;
+      if (choices[j].id === 'pierce') hasPierce = true;
+    }
+    if (hasMulti && hasPierce) {
+      // Найти альтернативу
+      for (var k = 3; k < pool.length; k++) {
+        if (pool[k].id !== 'multi' && pool[k].id !== 'pierce') {
+          for (var m = 0; m < choices.length; m++) {
+            if (choices[m].id === 'pierce') {
+              choices[m] = pool[k];
+              break;
+            }
+          }
+          break;
+        }
+      }
+    }
+
     this.upgradeChoices = [];
-    for (var i = 0; i < 3; i++) {
-      this.upgradeChoices.push({ def: pool[i], rarity: rollRarity() });
+    for (var n = 0; n < 3; n++) {
+      this.upgradeChoices.push({ def: choices[n], rarity: rollRarity() });
     }
 
     var list = document.getElementById('upgrade-list');
@@ -872,7 +934,7 @@ var Game = {
     var self = this;
     var cards = [];
 
-    for (var j = 0; j < this.upgradeChoices.length; j++) {
+    for (var c = 0; c < this.upgradeChoices.length; c++) {
       (function (idx) {
         var choice = self.upgradeChoices[idx];
         var rarity = RARITIES[choice.rarity];
@@ -905,17 +967,17 @@ var Game = {
 
         list.appendChild(container);
         cards.push(container);
-      })(j);
+      })(c);
     }
 
     this.setState('upgrade');
 
-    for (var k = 0; k < cards.length; k++) {
+    for (var ci = 0; ci < cards.length; ci++) {
       (function (idx, card) {
         setTimeout(function () { card.classList.add('revealed'); }, 100 + idx * 120);
         setTimeout(function () { card.classList.add('flipped'); Audio2.cardFlip(); }, 650 + idx * 350);
         setTimeout(function () { card.classList.add('clickable'); }, 1150 + idx * 350);
-      })(k, cards[k]);
+      })(ci, cards[ci]);
     }
   },
 
@@ -925,6 +987,10 @@ var Game = {
     var rarity = RARITIES[choice.rarity];
     var actualValue = choice.def.base * rarity.mult;
     choice.def.apply(this.player, actualValue);
+
+    // Счётчик уровней для maxLevel
+    if (!this.player.upgradeCounts) this.player.upgradeCounts = {};
+    this.player.upgradeCounts[choice.def.id] = (this.player.upgradeCounts[choice.def.id] || 0) + 1;
 
     var p = this.player;
     var particleCount = this.performanceMode ? 8 : 20;
@@ -952,7 +1018,6 @@ var Game = {
     this.setState('playing');
   },
 
-  /* ============= ЗАКЛИНАНИЯ ============= */
   castSpell: function (index) {
     if (this.state !== 'playing') return;
     var p = this.player;
@@ -1027,7 +1092,7 @@ var Game = {
   castFireball: function (p) {
     Audio2.castFire();
     var dmg = 46 * p.damageMul;
-    var aimAngle = Math.atan2(this.aimVec.y, this.aimVec.x);
+    var aimAngle = this.getAimAngle();
     var target = this.findAutoAimTarget(p.x, p.y, 560, aimAngle, Math.PI * 0.5);
     var fireAngle = aimAngle;
     if (target) {
@@ -1105,7 +1170,7 @@ var Game = {
 
   castMeteor: function (p) {
     Audio2.castFire();
-    var aimAngle = Math.atan2(this.aimVec.y, this.aimVec.x);
+    var aimAngle = this.getAimAngle();
     var target = this.findAutoAimTarget(p.x, p.y, 600, aimAngle, Math.PI * 0.7);
     var tx, ty;
     if (target) {
@@ -1114,8 +1179,8 @@ var Game = {
       this.lockTarget = target;
       this.lockTimer = 1.0;
     } else {
-      tx = p.x + this.aimVec.x * 250;
-      ty = p.y + this.aimVec.y * 250;
+      tx = p.x + Math.cos(aimAngle) * 250;
+      ty = p.y + Math.sin(aimAngle) * 250;
     }
     var meteor = {
       x: tx, y: ty, delay: 1.0, maxDelay: 1.0,
@@ -1148,9 +1213,10 @@ var Game = {
 
   castTeleport: function (p) {
     Audio2.lock();
-    var angle = Math.atan2(this.aimVec.y, this.aimVec.x);
+    // ИСПРАВЛЕНО: getAimAngle учитывает движение и facing
+    var angle = this.getAimAngle();
     var dist = 250;
-    // trail before
+
     if (!this.performanceMode) {
       for (var i = 0; i < 15; i++) {
         this.particles.push(new Particle(
@@ -1163,7 +1229,6 @@ var Game = {
     p.x += Math.cos(angle) * dist;
     p.y += Math.sin(angle) * dist;
     p.invulnTimer = 0.3;
-    // trail after
     if (!this.performanceMode) {
       this.particles.push(new RingParticle(p.x, p.y, 60, 0.4, '#b56bff', 3));
       for (var j = 0; j < 15; j++) {
@@ -1182,7 +1247,8 @@ var Game = {
   castFrostbolt: function (p) {
     Audio2.castNova();
     var dmg = 30 * p.damageMul;
-    var angle = Math.atan2(this.aimVec.y, this.aimVec.x);
+    // ИСПРАВЛЕНО
+    var angle = this.getAimAngle();
     if (this.projectiles.length >= this.maxProjectiles) return;
     var pr = new Projectile(p.x, p.y, angle, 700, dmg, {
       radius: 8, color: '#a0e0ff', life: 1.2,
@@ -1194,14 +1260,21 @@ var Game = {
     this.screenFlashColor = 'rgba(160,224,255,0.25)';
   },
 
+  /* ИСПРАВЛЕНО: раньше всегда летело вправо, теперь по направлению */
   castPoison: function (p) {
     Audio2.castChain();
-    var angle = Math.atan2(this.aimVec.y, this.aimVec.x);
+    var angle = this.getAimAngle();
     var tx = p.x + Math.cos(angle) * 200;
     var ty = p.y + Math.sin(angle) * 200;
     var radius = 150;
     var poisonDps = 10 * p.damageMul;
     var poisonDur = 5;
+
+    // Визуальное облако
+    this._poisonClouds.push({
+      x: tx, y: ty, radius: radius,
+      life: poisonDur, maxLife: poisonDur
+    });
 
     if (!this.performanceMode) {
       for (var i = 0; i < 40; i++) {
@@ -1210,11 +1283,10 @@ var Game = {
         var px = tx + Math.cos(a) * rr;
         var py = ty + Math.sin(a) * rr;
         if (this.particles.length >= this.maxParticles) break;
-        var pt = new Particle(px, py,
+        this.particles.push(new Particle(px, py,
           (Math.random() - 0.5) * 30, -20 - Math.random() * 20,
           0.8 + Math.random() * 0.4,
-          Math.random() < 0.5 ? '#8aff4d' : '#4dcc30', 2 + Math.random() * 3);
-        this.particles.push(pt);
+          Math.random() < 0.5 ? '#8aff4d' : '#4dcc30', 2 + Math.random() * 3));
       }
     }
     this.particles.push(new RingParticle(tx, ty, radius, 0.7, 'rgba(140,255,80,0.6)', 3));
@@ -1254,22 +1326,26 @@ var Game = {
     Utils.vibrate(25);
   },
 
+  /* ИСПРАВЛЕНО + чёткая визуализация луча */
   castBeam: function (p) {
     Audio2.castChain();
-    var angle = Math.atan2(this.aimVec.y, this.aimVec.x);
+    var angle = this.getAimAngle();
     var len = 500;
     var dmgBase = 80 * p.damageMul;
     var hitCount = 0;
+
+    var cosA = Math.cos(angle);
+    var sinA = Math.sin(angle);
 
     for (var i = 0; i < this.enemies.length; i++) {
       var e = this.enemies[i];
       if (e.dead) continue;
       var dx = e.x - p.x;
       var dy = e.y - p.y;
-      var proj = dx * Math.cos(angle) + dy * Math.sin(angle);
+      var proj = dx * cosA + dy * sinA;
       if (proj < -e.radius || proj > len + e.radius) continue;
-      var perpX = dx - proj * Math.cos(angle);
-      var perpY = dy - proj * Math.sin(angle);
+      var perpX = dx - proj * cosA;
+      var perpY = dy - proj * sinA;
       var perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
       if (perpDist < 25 + e.radius) {
         var isCrit = Math.random() < p.critChance;
@@ -1283,11 +1359,20 @@ var Game = {
       }
     }
 
+    // Чёткая визуализация луча
+    this._beamEffect = {
+      x1: p.x, y1: p.y,
+      x2: p.x + cosA * len,
+      y2: p.y + sinA * len,
+      life: 0.35,
+      maxLife: 0.35
+    };
+
     if (!this.performanceMode) {
       for (var j = 0; j < 25; j++) {
         var t = j / 25;
-        var bx = p.x + Math.cos(angle) * len * t + (Math.random() - 0.5) * 12;
-        var by = p.y + Math.sin(angle) * len * t + (Math.random() - 0.5) * 12;
+        var bx = p.x + cosA * len * t + (Math.random() - 0.5) * 12;
+        var by = p.y + sinA * len * t + (Math.random() - 0.5) * 12;
         if (this.particles.length >= this.maxParticles) break;
         this.particles.push(new Particle(bx, by, 0, 0, 0.5, j % 2 ? '#ffff80' : '#ffffff', 3));
       }
@@ -1350,6 +1435,7 @@ var Game = {
     if (p.lifesteal > 0) p.heal(dmg * p.lifesteal);
   },
 
+  /* Штраф за количество снарядов: 0.92^(count-1) */
   updateBasicAttack: function (dt) {
     var p = this.player;
     this.boltCooldown -= dt;
@@ -1358,14 +1444,16 @@ var Game = {
     var interval = 0.26 * p.cooldownMul;
     this.boltCooldown = interval;
     Audio2.shoot();
-    var baseAngle = Math.atan2(this.aimVec.y, this.aimVec.x);
+    var baseAngle = this.getAimAngle();
     var count = p.projectiles;
     var spread = count > 1 ? 0.13 : 0;
+    // Штраф урона за каждый доп. снаряд
+    var perShotMul = count > 1 ? Math.pow(0.92, count - 1) : 1;
     for (var i = 0; i < count; i++) {
       if (this.projectiles.length >= this.maxProjectiles) break;
       var offset = (i - (count - 1) / 2) * spread;
       var a = baseAngle + offset;
-      var dmg = 13 * p.damageMul;
+      var dmg = 13 * p.damageMul * perShotMul;
       this.projectiles.push(new Projectile(p.x, p.y, a, 640, dmg, {
         radius: 5, color: '#8ad4ff', life: 1.1,
         pierce: p.boltPierce, burn: p.boltBurn
@@ -1408,9 +1496,20 @@ var Game = {
       if (this.comboTimer <= 0) this.comboCount = 0;
     }
 
+    // Beam effect
+    if (this._beamEffect) {
+      this._beamEffect.life -= dt;
+      if (this._beamEffect.life <= 0) this._beamEffect = null;
+    }
+
+    // Poison clouds
+    for (var pci = this._poisonClouds.length - 1; pci >= 0; pci--) {
+      this._poisonClouds[pci].life -= dt;
+      if (this._poisonClouds[pci].life <= 0) this._poisonClouds.splice(pci, 1);
+    }
+
     this.updateMeteors(dt);
 
-    // Enemies
     for (var i = this.enemies.length - 1; i >= 0; i--) {
       var e = this.enemies[i];
       if (e.dead) {
@@ -1457,7 +1556,6 @@ var Game = {
 
     this.spatialGrid.rebuild(this.enemies);
 
-    // Player projectiles
     for (var j = this.projectiles.length - 1; j >= 0; j--) {
       var pr = this.projectiles[j];
       pr.update(dt);
@@ -1514,7 +1612,6 @@ var Game = {
       }
     }
 
-    // Enemy projectiles
     for (var ep = this.enemyProjectiles.length - 1; ep >= 0; ep--) {
       var epr = this.enemyProjectiles[ep];
       epr.update(dt);
@@ -1535,7 +1632,6 @@ var Game = {
       }
     }
 
-    // Pickups
     for (var m = this.pickups.length - 1; m >= 0; m--) {
       var pk = this.pickups[m];
       var collected = pk.update(dt, p);
@@ -1557,7 +1653,6 @@ var Game = {
       }
     }
 
-    // Particles
     for (var n2 = this.particles.length - 1; n2 >= 0; n2--) {
       var pt = this.particles[n2];
       pt.update(dt);
@@ -1567,7 +1662,6 @@ var Game = {
       this.particles.splice(0, this.particles.length - effMaxParticles);
     }
 
-    // Damage texts
     for (var o = this.damageTexts.length - 1; o >= 0; o--) {
       var txt = this.damageTexts[o];
       txt.life -= dt;
@@ -1724,7 +1818,83 @@ var Game = {
     }
   },
 
-  /* ============= DRAW ============= */
+  /* ============================================================
+     Индикаторы направленных заклинаний
+     ============================================================ */
+  drawSpellIndicators: function (ctx) {
+    if (!this.aimActive && !this.mouseDown) return;
+    var p = this.player;
+    if (!p) return;
+    var angle = this.getAimAngle();
+
+    // Лазер — линия
+    if (this.hasSpell('beam')) {
+      var len = 500;
+      ctx.save();
+      ctx.globalAlpha = 0.32;
+      ctx.strokeStyle = '#ffff80';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 8]);
+      ctx.lineDashOffset = -performance.now() * 0.02;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x + Math.cos(angle) * len, p.y + Math.sin(angle) * len);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Ядовитое облако — круг в точке взгляда
+    if (this.hasSpell('poison')) {
+      var ptx = p.x + Math.cos(angle) * 200;
+      var pty = p.y + Math.sin(angle) * 200;
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      ctx.strokeStyle = '#8aff4d';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.arc(ptx, pty, 150, 0, 6.2832);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Метеор — круг
+    if (this.hasSpell('meteor')) {
+      var mx = p.x + Math.cos(angle) * 250;
+      var my = p.y + Math.sin(angle) * 250;
+      ctx.save();
+      ctx.globalAlpha = 0.22;
+      ctx.strokeStyle = '#ff7a3c';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.arc(mx, my, 200, 0, 6.2832);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Телепорт — точка назначения с крестиком
+    if (this.hasSpell('teleport')) {
+      var tex = p.x + Math.cos(angle) * 250;
+      var tey = p.y + Math.sin(angle) * 250;
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      ctx.strokeStyle = '#b56bff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(tex, tey, 12, 0, 6.2832);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(tex - 6, tey - 6);
+      ctx.lineTo(tex + 6, tey + 6);
+      ctx.moveTo(tex + 6, tey - 6);
+      ctx.lineTo(tex - 6, tey + 6);
+      ctx.stroke();
+      ctx.restore();
+    }
+  },
+
+  /* ================= DRAW ================= */
   draw: function () {
     var ctx = this.ctx, W = this.W, H = this.H;
     this.performanceMode = this.lowQuality || this.bloodMoonActive;
@@ -1754,6 +1924,25 @@ var Game = {
     var viewR = this.camX + W + 50;
     var viewT = this.camY - 50;
     var viewB = this.camY + H + 50;
+
+    // Poison clouds (под всеми)
+    for (var pci = 0; pci < this._poisonClouds.length; pci++) {
+      var pc = this._poisonClouds[pci];
+      var alpha = Math.min(1, pc.life / pc.maxLife * 2) * 0.25;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#4dcc30';
+      ctx.beginPath();
+      ctx.arc(pc.x, pc.y, pc.radius, 0, 6.2832);
+      ctx.fill();
+      ctx.strokeStyle = '#8aff4d';
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = alpha * 2;
+      ctx.beginPath();
+      ctx.arc(pc.x, pc.y, pc.radius, 0, 6.2832);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     for (var i = 0; i < this.pickups.length; i++) {
       var pk = this.pickups[i];
@@ -1802,7 +1991,31 @@ var Game = {
     }
 
     this.player.draw(ctx);
+    this.drawSpellIndicators(ctx);
     this.drawAutoAimReticle(ctx);
+
+    // Beam effect поверх
+    if (this._beamEffect) {
+      var be = this._beamEffect;
+      var ba = be.life / be.maxLife;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = ba;
+      ctx.strokeStyle = '#ffff80';
+      ctx.lineWidth = 10 * ba;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(be.x1, be.y1);
+      ctx.lineTo(be.x2, be.y2);
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4 * ba;
+      ctx.beginPath();
+      ctx.moveTo(be.x1, be.y1);
+      ctx.lineTo(be.x2, be.y2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     for (var pidx = 0; pidx < this.particles.length; pidx++) {
       var pt = this.particles[pidx];
@@ -1833,7 +2046,6 @@ var Game = {
       var mt = this.meteors[i];
       if (mt.impacted) continue;
       var progress = 1 - mt.delay / mt.maxDelay;
-
       ctx.save();
       ctx.globalAlpha = 0.3 + progress * 0.6;
       ctx.strokeStyle = '#ff7a3c';
@@ -1850,7 +2062,6 @@ var Game = {
       ctx.arc(mt.x, mt.y, mt.radius * Math.max(0.2, progress), 0, 6.2832);
       ctx.fill();
       ctx.restore();
-
       if (!this.performanceMode) {
         var fallY = mt.y - (1 - progress) * 900;
         var tg = ctx.createRadialGradient(mt.x, fallY, 0, mt.x, fallY, 50);
@@ -1964,7 +2175,6 @@ var Game = {
     var pulse = Utils.clamp(this.lockTimer / 0.55, 0, 1);
     var r = t.radius + 14 + (1 - pulse) * 10;
     var rot = performance.now() * 0.005;
-
     ctx.save();
     ctx.translate(t.x, t.y);
     ctx.rotate(rot);

@@ -1,5 +1,5 @@
 /* ============================================================
-   DATA v6 — 10 заклинаний, loadout, достижения
+   DATA v8 — усложнение баланса, multi/pierce с maxLevel
    ============================================================ */
 
 var RARITIES = {
@@ -17,86 +17,41 @@ function rollRarity() {
   return 'common';
 }
 
-/* ============================================================
-   КЛАССЫ МАГОВ
-   ============================================================ */
 var MAGE_CLASSES = [
-  {
-    id: 'pyromancer',
-    icon: '🔥',
-    name: 'Пиромант',
-    desc: '+15% урона, поджог базовой атаки +4/сек. Специализация на огне.',
-    color: '#ff7a3c'
-  },
-  {
-    id: 'cryomancer',
-    icon: '❄',
-    name: 'Криомант',
-    desc: 'Нова +50% урона. Замедленные враги получают +50% урона от всех источников.',
-    color: '#7fdcff'
-  },
-  {
-    id: 'electromancer',
-    icon: '⚡',
-    name: 'Электромант',
-    desc: '+20% крита, цепь бьёт по 6 врагам. Мана реген -20%.',
-    color: '#9ee8ff'
-  }
+  { id: 'pyromancer', icon: '🔥', name: 'Пиромант',
+    desc: '+15% урона, поджог базовой атаки +4/сек. Специализация на огне.', color: '#ff7a3c' },
+  { id: 'cryomancer', icon: '❄', name: 'Криомант',
+    desc: 'Нова +50% урона. Замедленные враги получают +50% урона от всех источников.', color: '#7fdcff' },
+  { id: 'electromancer', icon: '⚡', name: 'Электромант',
+    desc: '+20% крита, цепь бьёт по 6 врагам. Мана реген -20%.', color: '#9ee8ff' }
 ];
 
-/* ============================================================
-   10 ЗАКЛИНАНИЙ
-   ============================================================ */
 var SPELL_DEFS = [
-  {
-    id: 'nova', icon: '❄', name: 'Ледяная нова', cost: 28, cooldown: 5.5, unlockedByDefault: true,
-    desc: 'Взрыв холода вокруг мага. Замедляет и наносит урон всем в радиусе 175.'
-  },
-  {
-    id: 'fireball', icon: '🔥', name: 'Огненный шар', cost: 18, cooldown: 1.5, unlockedByDefault: true,
-    desc: 'Самонаводящийся снаряд. Поджигает цель. Мощный одиночный удар.'
-  },
-  {
-    id: 'chain', icon: '⚡', name: 'Цепь молний', cost: 32, cooldown: 6.0, unlockedByDefault: true,
-    desc: 'Прыгает по 4 врагам в радиусе 220px. Замедляет. Не требует цели.'
-  },
-  {
-    id: 'meteor', icon: '☄', name: 'Метеор', cost: 40, cooldown: 12.0, unlockedByDefault: true,
-    desc: 'Падает через 1 секунду в точке взгляда. AoE радиус 200, урон 120. Поджигает.'
-  },
-  {
-    id: 'shield', icon: '🛡', name: 'Магический щит', cost: 35, cooldown: 10.0, unlockCost: 120,
-    desc: '5 секунд неуязвимости. Блокирует весь урон и снаряды.'
-  },
-  {
-    id: 'teleport', icon: '🌀', name: 'Телепорт', cost: 20, cooldown: 4.0, unlockCost: 100,
-    desc: 'Рывок на 250px в направлении взгляда. 0.3 секунды неуязвимости после.'
-  },
-  {
-    id: 'frostbolt', icon: '🧊', name: 'Ледяная стрела', cost: 22, cooldown: 3.5, unlockCost: 90,
-    desc: 'Пробивает 3 врагов и сильно замедляет их. Снаряд летит быстро.'
-  },
-  {
-    id: 'poison', icon: '☠', name: 'Ядовитое облако', cost: 30, cooldown: 8.0, unlockCost: 150,
-    desc: 'Отравляет всех врагов в радиусе 150 в точке взгляда. Урон со временем.'
-  },
-  {
-    id: 'heal', icon: '💚', name: 'Исцеление', cost: 40, cooldown: 15.0, unlockCost: 130,
-    desc: 'Мгновенно восстанавливает 40% от максимума HP.'
-  },
-  {
-    id: 'beam', icon: '💫', name: 'Лазерный луч', cost: 45, cooldown: 9.0, unlockCost: 200,
-    desc: 'Прожигает всех врагов в линии 500px. Мощный мгновенный урон.'
-  }
+  { id: 'nova', icon: '❄', name: 'Ледяная нова', cost: 28, cooldown: 5.5, unlockedByDefault: true,
+    desc: 'Взрыв холода вокруг мага. Замедляет и наносит урон всем в радиусе 175.' },
+  { id: 'fireball', icon: '🔥', name: 'Огненный шар', cost: 18, cooldown: 1.5, unlockedByDefault: true,
+    desc: 'Самонаводящийся снаряд. Поджигает цель. Мощный одиночный удар.' },
+  { id: 'chain', icon: '⚡', name: 'Цепь молний', cost: 32, cooldown: 6.0, unlockedByDefault: true,
+    desc: 'Прыгает по 4 врагам в радиусе 220px. Замедляет. Не требует цели.' },
+  { id: 'meteor', icon: '☄', name: 'Метеор', cost: 40, cooldown: 12.0, unlockedByDefault: true,
+    desc: 'Падает через 1 секунду в точке взгляда. AoE радиус 200, урон 120. Поджигает.' },
+  { id: 'shield', icon: '🛡', name: 'Магический щит', cost: 35, cooldown: 10.0, unlockCost: 120,
+    desc: '5 секунд неуязвимости. Блокирует весь урон и снаряды.' },
+  { id: 'teleport', icon: '🌀', name: 'Телепорт', cost: 20, cooldown: 4.0, unlockCost: 100,
+    desc: 'Рывок на 250px в направлении взгляда. 0.3 секунды неуязвимости после.' },
+  { id: 'frostbolt', icon: '🧊', name: 'Ледяная стрела', cost: 22, cooldown: 3.5, unlockCost: 90,
+    desc: 'Пробивает 3 врагов и сильно замедляет их. Снаряд летит быстро.' },
+  { id: 'poison', icon: '☠', name: 'Ядовитое облако', cost: 30, cooldown: 8.0, unlockCost: 150,
+    desc: 'Отравляет всех врагов в радиусе 150 в точке взгляда. Урон со временем.' },
+  { id: 'heal', icon: '💚', name: 'Исцеление', cost: 40, cooldown: 15.0, unlockCost: 130,
+    desc: 'Мгновенно восстанавливает 40% от максимума HP.' },
+  { id: 'beam', icon: '💫', name: 'Лазерный луч', cost: 45, cooldown: 9.0, unlockCost: 200,
+    desc: 'Прожигает всех врагов в линии 500px. Мощный мгновенный урон.' }
 ];
 
-/* Стоимость слотов: 4 стартовых, 5-й за души */
 var SPELL_SLOT_MAX = 5;
 var SPELL_SLOT_5_COST = 300;
 
-/* ============================================================
-   ДОСТИЖЕНИЯ
-   ============================================================ */
 var ACHIEVEMENTS = [
   { id: 'first_blood', icon: '🩸', name: 'Первая кровь', desc: 'Убить первого врага', souls: 10,
     check: function (s) { return s.totalKillsAllTime >= 1; } },
@@ -121,7 +76,7 @@ var ACHIEVEMENTS = [
 ];
 
 /* ============================================================
-   УЛУЧШЕНИЯ (за волны)
+   УЛУЧШЕНИЯ — multi/pierce теперь maxLevel 2, с фильтром
    ============================================================ */
 var UPGRADES = [
   { id: 'dmg',     icon: '🗡', name: 'Острый фокус',     base: 0.20,
@@ -130,7 +85,7 @@ var UPGRADES = [
   { id: 'hp',      icon: '❤', name: 'Живучесть',        base: 25,
     desc: function (v) { return '+' + Math.round(v) + ' HP'; },
     apply: function (p, v) { p.maxHp += v; p.hp = p.maxHp; } },
-  { id: 'regen',   icon: '✚', name: 'Регенерация',      base: 1.2,
+  { id: 'regen',   icon: '✚', name: 'Регенерация',      base: 1.0,
     desc: function (v) { return '+' + v.toFixed(1) + ' HP/с'; },
     apply: function (p, v) { p.hpRegen += v; } },
   { id: 'mana',    icon: '✦', name: 'Поток маны',       base: 3,
@@ -151,26 +106,40 @@ var UPGRADES = [
   { id: 'cd',      icon: '⏱', name: 'Быстрые руки',    base: 0.15,
     desc: function (v) { return '-' + Math.round(v * 100) + '% кд'; },
     apply: function (p, v) { p.cooldownMul *= Math.max(0.5, 1 - v); } },
-  { id: 'multi',   icon: '✧', name: 'Расщепление',      base: 1,
-    desc: function (v) { return '+' + Math.min(2, Math.round(v)) + ' снаряд'; },
-    apply: function (p, v) { var a = Math.min(2, Math.round(v)); p.projectiles += Math.max(1, a); } },
+
+  /* multi — ограничен 2 уровнями, штраф через perShotMul в game.js */
+  { id: 'multi',   icon: '✧', name: 'Расщепление',      base: 1, maxLevel: 2,
+    desc: function (v) {
+      var n = Math.max(1, Math.min(2, Math.round(v)));
+      return '+' + n + ' снаряд · каждый -8% урона';
+    },
+    apply: function (p, v) {
+      var n = Math.max(1, Math.min(2, Math.round(v)));
+      p.projectiles += n;
+    } },
+
   { id: 'leech',   icon: '🩸', name: 'Вампиризм',      base: 0.04,
     desc: function (v) { return '+' + Math.round(v * 100) + '% вампиризма'; },
     apply: function (p, v) { p.lifesteal += v; } },
-  { id: 'armor',   icon: '🛡', name: 'Каменная кожа',   base: 0.08,
+  { id: 'armor',   icon: '🛡', name: 'Каменная кожа',   base: 0.06, maxLevel: 8,
     desc: function (v) { return '+' + Math.round(v * 100) + '% брони'; },
-    apply: function (p, v) { p.armor = Math.min(0.6, p.armor + v); } },
+    apply: function (p, v) { p.armor = Math.min(0.5, p.armor + v); } },
   { id: 'burn',    icon: '🔥', name: 'Тлеющий посох',   base: 3,
     desc: function (v) { return 'Поджог ' + Math.round(v) + '/с'; },
     apply: function (p, v) { p.boltBurn += v; } },
-  { id: 'pierce',  icon: '➤', name: 'Пробивание',      base: 1,
-    desc: function (v) { return 'Пробитие +' + Math.min(2, Math.round(v)); },
-    apply: function (p, v) { var a = Math.min(2, Math.round(v)); p.boltPierce += Math.max(1, a); } }
+
+  /* pierce — ограничен 2 уровнями */
+  { id: 'pierce',  icon: '➤', name: 'Пробивание',      base: 1, maxLevel: 2,
+    desc: function (v) {
+      var n = Math.max(1, Math.min(2, Math.round(v)));
+      return 'Пробитие +' + n;
+    },
+    apply: function (p, v) {
+      var n = Math.max(1, Math.min(2, Math.round(v)));
+      p.boltPierce += n;
+    } }
 ];
 
-/* ============================================================
-   МЕТА-ПРОКАЧКА: СТАТЫ
-   ============================================================ */
 var META_STATS = [
   { id: 'hp',       icon: '❤', name: 'Здоровье',    baseCost: 50, costScale: 1.6, maxLevel: 5,
     desc: function (lvl) { return '+' + (lvl * 10) + ' HP'; },
@@ -189,7 +158,6 @@ var META_STATS = [
     apply: function (p, lvl) { p.critChance += 0.02 * lvl; } }
 ];
 
-/* Legacy: старые апгрейды заклинаний. Применяются пассивно из сохранения, UI нет. */
 var META_SPELLS = [
   { id: 'novaDmg',    icon: '❄', name: 'Мощь новы',        baseCost: 80,  costScale: 1.8, maxLevel: 3,
     desc: function (lvl) { return '+' + (lvl * 15) + '% урона'; },
@@ -210,7 +178,7 @@ function costFor(upg, level) {
 }
 
 /* ============================================================
-   ВРАГИ И БОССЫ
+   ВРАГИ И БОССЫ — усилены для сложности
    ============================================================ */
 var ENEMY_TYPES = {
   imp:    { hp: 22, speed: 62, damage: 8,  radius: 12, xp: 3,  color: '#ff5b6e', colorDark: '#a02134', glyph: 'imp' },

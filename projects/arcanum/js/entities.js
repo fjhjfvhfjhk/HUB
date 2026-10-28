@@ -1,5 +1,5 @@
 /* ============================================================
-   ENTITIES v7 — кеш спрайтов, additive blend
+   ENTITIES v8 — усиленные Enemy и Boss
    ============================================================ */
 
 function Particle(x, y, vx, vy, life, color, size) {
@@ -101,19 +101,13 @@ Projectile.prototype.draw = function (c) {
     var s = 1 + Math.sin(this.pulse) * 0.12;
     c.save();
     c.translate(this.x, this.y);
-
-    // Внешнее свечение из кеша — БЕЗ создания градиента
     c.globalCompositeOperation = 'lighter';
     Sprites.drawGlow(c, 0, 0, this.radius * 3.2 * s, '#ff7a3c', 0.85);
     c.globalCompositeOperation = 'source-over';
-
-    // Ядро
     c.fillStyle = '#fff7e0';
     c.beginPath(); c.arc(0, 0, this.radius * 0.6 * s, 0, 6.2832); c.fill();
     c.fillStyle = '#ffd166';
     c.beginPath(); c.arc(0, 0, this.radius * 0.95, 0, 6.2832); c.fill();
-
-    // Вращающиеся искры
     c.rotate(this.pulse * 0.5);
     c.fillStyle = '#fff';
     for (var i = 0; i < 3; i++) {
@@ -142,8 +136,6 @@ Projectile.prototype.draw = function (c) {
     c.restore();
     return;
   }
-
-  // Обычная "искра"
   c.save();
   c.translate(this.x, this.y);
   c.globalCompositeOperation = 'lighter';
@@ -212,7 +204,6 @@ Pickup.prototype.draw = function (c) {
   else { col = '#ffc857'; sym = '◆'; }
   c.save();
   c.globalAlpha = this.life < 2 ? (0.3 + 0.7 * Math.abs(Math.sin(this.life * 10))) : 1;
-  // Свечение из кеша
   c.globalCompositeOperation = 'lighter';
   Sprites.drawGlow(c, this.x, this.y + bob, this.r * 2.4, col, 0.4);
   c.globalCompositeOperation = 'source-over';
@@ -225,20 +216,24 @@ Pickup.prototype.draw = function (c) {
   c.restore();
 };
 
+/* ================= ВРАГИ — усилены ================= */
 function Enemy(x, y, typeKey, wave, isElite) {
   var base = ENEMY_TYPES[typeKey];
   this.type = typeKey; this.base = base;
-  var hpScale = 1 + (wave - 1) * 0.20;
-  var spScale = 1 + (wave - 1) * 0.035;
+
+  // УСИЛЕНО: hp 0.20→0.26, sp 0.035→0.045 (макс 1.75→1.9), damage 0.10→0.13
+  var hpScale = 1 + (wave - 1) * 0.26;
+  var spScale = 1 + (wave - 1) * 0.045;
+
   this.maxHp = Math.round(base.hp * hpScale);
-  this.speed = base.speed * Math.min(spScale, 1.75);
-  this.damage = base.damage * (1 + (wave - 1) * 0.10);
+  this.speed = base.speed * Math.min(spScale, 1.9);
+  this.damage = base.damage * (1 + (wave - 1) * 0.13);
   this.radius = base.radius;
   this.xp = base.xp;
   this.isElite = !!isElite;
   if (this.isElite) {
-    this.maxHp = Math.round(this.maxHp * 2.6);
-    this.damage *= 1.6;
+    this.maxHp = Math.round(this.maxHp * 2.8);
+    this.damage *= 1.7;
     this.xp = Math.round(this.xp * 4);
     this.radius *= 1.18;
   }
@@ -462,7 +457,7 @@ Enemy.prototype.draw = function (c) {
   }
 };
 
-/* ================= БОССЫ ================= */
+/* ================= БОССЫ — усилены ================= */
 function Boss(x, y, wave, bossType) {
   Enemy.call(this, x, y, 'brute', wave);
   this.isBoss = true;
@@ -473,25 +468,26 @@ function Boss(x, y, wave, bossType) {
   this.bossShape = bossType.shape;
   this.bossLevel = Math.floor(wave / 5);
 
-  this.maxHp = Math.round(420 + this.bossLevel * 320);
+  // УСИЛЕНО: 420+320 → 520+400, damage 24+6 → 28+8
+  this.maxHp = Math.round(520 + this.bossLevel * 400);
   this.speed = 34;
   this.radius = 38;
-  this.damage = 24 + this.bossLevel * 6;
+  this.damage = 28 + this.bossLevel * 8;
   this.xp = 40 + this.bossLevel * 15;
 
   if (this.bossType === 'titan') {
-    this.maxHp = Math.round(this.maxHp * 1.7);
+    this.maxHp = Math.round(this.maxHp * 1.8);
     this.speed = 22;
     this.radius = 52;
-    this.damage = 38 + this.bossLevel * 10;
+    this.damage = 42 + this.bossLevel * 12;
     this.xp = Math.round(this.xp * 1.4);
   } else if (this.bossType === 'summoner') {
-    this.maxHp = Math.round(this.maxHp * 0.85);
+    this.maxHp = Math.round(this.maxHp * 0.9);
     this.speed = 24;
     this.radius = 34;
     this.xp = Math.round(this.xp * 1.1);
   } else if (this.bossType === 'mage') {
-    this.maxHp = Math.round(this.maxHp * 0.78);
+    this.maxHp = Math.round(this.maxHp * 0.85);
     this.speed = 42;
     this.radius = 32;
   }
@@ -846,6 +842,7 @@ function Player(x, y) {
   this.spellCdMod = [1, 1, 1, 1, 1];
   this.spellDisabled = [false, false, false, false, false];
   this.chainMaxJumps = 4;
+  this.upgradeCounts = {};
 }
 Player.prototype.addXp = function (n) {
   this.xp += n;
@@ -912,7 +909,6 @@ Player.prototype.draw = function (c) {
   var bobY = Math.sin(this.bob) * 1.8;
   var perfMode = (typeof Game !== 'undefined' && Game.performanceMode);
 
-  // Щит / неуязвимость
   if (this.invulnTimer > 0) {
     c.save();
     c.globalCompositeOperation = 'lighter';
