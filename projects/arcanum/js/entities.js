@@ -1,5 +1,6 @@
 /* ============================================================
-   ENTITIES v8 — усиленные Enemy и Boss
+   ENTITIES v9 — PIXEL ART rendering
+   Квадратные частицы, чанковые контуры, без градиентов
    ============================================================ */
 
 function Particle(x, y, vx, vy, life, color, size) {
@@ -22,8 +23,9 @@ Particle.prototype.draw = function (c) {
   c.globalAlpha = a;
   if (this.additive) c.globalCompositeOperation = 'lighter';
   c.fillStyle = this.color;
-  var s = this.size * (0.4 + a * 0.6);
-  c.beginPath(); c.arc(this.x, this.y, s, 0, 6.2832); c.fill();
+  // PIXEL ART: квадратные частицы
+  var s = Math.max(2, Math.ceil(this.size * (0.5 + a * 0.5)));
+  c.fillRect(Math.floor(this.x - s/2), Math.floor(this.y - s/2), s, s);
   if (this.additive) c.globalCompositeOperation = 'source-over';
   c.globalAlpha = 1;
 };
@@ -46,7 +48,7 @@ RingParticle.prototype.draw = function (c) {
   c.globalAlpha = a * 0.85;
   if (this.additive) c.globalCompositeOperation = 'lighter';
   c.strokeStyle = this.color;
-  c.lineWidth = this.width * a + 0.5;
+  c.lineWidth = Math.max(1, Math.floor(this.width * a + 0.5));
   c.beginPath(); c.arc(this.x, this.y, this.r, 0, 6.2832); c.stroke();
   if (this.additive) c.globalCompositeOperation = 'source-over';
   c.globalAlpha = 1;
@@ -98,53 +100,50 @@ Projectile.prototype.hasHit = function (e) {
 };
 Projectile.prototype.draw = function (c) {
   if (this.isFireball) {
-    var s = 1 + Math.sin(this.pulse) * 0.12;
+    var s = this.radius;
+    // PIXEL ART: свечение из кеша + квадратное ядро
     c.save();
-    c.translate(this.x, this.y);
     c.globalCompositeOperation = 'lighter';
-    Sprites.drawGlow(c, 0, 0, this.radius * 3.2 * s, '#ff7a3c', 0.85);
+    Sprites.drawGlow(c, this.x, this.y, this.radius * 3, '#ff7a3c', 0.6);
     c.globalCompositeOperation = 'source-over';
-    c.fillStyle = '#fff7e0';
-    c.beginPath(); c.arc(0, 0, this.radius * 0.6 * s, 0, 6.2832); c.fill();
+    // Квадратное ядро с чёрным контуром
+    var outer = s + 2;
+    c.fillStyle = '#000';
+    c.fillRect(Math.floor(this.x - outer), Math.floor(this.y - outer), outer * 2, outer * 2);
     c.fillStyle = '#ffd166';
-    c.beginPath(); c.arc(0, 0, this.radius * 0.95, 0, 6.2832); c.fill();
-    c.rotate(this.pulse * 0.5);
-    c.fillStyle = '#fff';
-    for (var i = 0; i < 3; i++) {
-      c.rotate(2.094);
-      c.beginPath(); c.arc(this.radius * 1.5, 0, 1.6, 0, 6.2832); c.fill();
-    }
+    c.fillRect(Math.floor(this.x - s), Math.floor(this.y - s), s * 2, s * 2);
+    c.fillStyle = '#fff7e0';
+    c.fillRect(Math.floor(this.x - s/2), Math.floor(this.y - s/2), s, s);
     c.restore();
     return;
   }
   if (this.isFrost) {
-    var sf = 1 + Math.sin(this.pulse) * 0.1;
+    var sf = this.radius;
     c.save();
-    c.translate(this.x, this.y);
     c.globalCompositeOperation = 'lighter';
-    Sprites.drawGlow(c, 0, 0, this.radius * 2.8 * sf, '#a0e0ff', 0.85);
+    Sprites.drawGlow(c, this.x, this.y, this.radius * 2.4, '#a0e0ff', 0.6);
     c.globalCompositeOperation = 'source-over';
+    c.fillStyle = '#000';
+    c.fillRect(Math.floor(this.x - sf - 1), Math.floor(this.y - sf - 1), sf * 2 + 2, sf * 2 + 2);
+    c.fillStyle = '#a0e0ff';
+    c.fillRect(Math.floor(this.x - sf), Math.floor(this.y - sf), sf * 2, sf * 2);
     c.fillStyle = '#e0f4ff';
-    c.beginPath(); c.arc(0, 0, this.radius * 0.7, 0, 6.2832); c.fill();
-    c.rotate(this.pulse * 0.8);
-    c.strokeStyle = '#a0e0ff';
-    c.lineWidth = 1.5;
-    c.beginPath();
-    c.moveTo(-this.radius * 1.4, 0); c.lineTo(this.radius * 1.4, 0);
-    c.moveTo(0, -this.radius * 1.4); c.lineTo(0, this.radius * 1.4);
-    c.stroke();
+    c.fillRect(Math.floor(this.x - sf/2), Math.floor(this.y - sf/2), sf, sf);
     c.restore();
     return;
   }
+  // Обычный снаряд — маленький квадрат
+  var ss = this.radius;
   c.save();
-  c.translate(this.x, this.y);
   c.globalCompositeOperation = 'lighter';
-  Sprites.drawGlow(c, 0, 0, this.radius * 2, this.color, 0.7);
+  Sprites.drawGlow(c, this.x, this.y, this.radius * 2.2, this.color, 0.5);
   c.globalCompositeOperation = 'source-over';
+  c.fillStyle = '#000';
+  c.fillRect(Math.floor(this.x - ss - 1), Math.floor(this.y - ss - 1), ss * 2 + 2, ss * 2 + 2);
   c.fillStyle = this.color;
-  c.beginPath(); c.arc(0, 0, this.radius, 0, 6.2832); c.fill();
-  c.fillStyle = '#ffffff';
-  c.beginPath(); c.arc(0, 0, this.radius * 0.42, 0, 6.2832); c.fill();
+  c.fillRect(Math.floor(this.x - ss), Math.floor(this.y - ss), ss * 2, ss * 2);
+  c.fillStyle = '#fff';
+  c.fillRect(Math.floor(this.x - ss/2), Math.floor(this.y - ss/2), ss, ss);
   c.restore();
 };
 
@@ -165,16 +164,17 @@ EnemyProjectile.prototype.update = function (dt) {
   if (this.life <= 0) this.dead = true;
 };
 EnemyProjectile.prototype.draw = function (c) {
-  var s = 1 + Math.sin(this.pulse) * 0.15;
+  var s = this.radius;
   c.save();
-  c.translate(this.x, this.y);
   c.globalCompositeOperation = 'lighter';
-  Sprites.drawGlow(c, 0, 0, this.radius * 2.4 * s, this.color, 0.9);
+  Sprites.drawGlow(c, this.x, this.y, this.radius * 2.4, this.color, 0.6);
   c.globalCompositeOperation = 'source-over';
+  c.fillStyle = '#000';
+  c.fillRect(Math.floor(this.x - s - 1), Math.floor(this.y - s - 1), s * 2 + 2, s * 2 + 2);
   c.fillStyle = this.color;
-  c.beginPath(); c.arc(0, 0, this.radius, 0, 6.2832); c.fill();
+  c.fillRect(Math.floor(this.x - s), Math.floor(this.y - s), s * 2, s * 2);
   c.fillStyle = '#fff';
-  c.beginPath(); c.arc(0, 0, this.radius * 0.35, 0, 6.2832); c.fill();
+  c.fillRect(Math.floor(this.x - s/2), Math.floor(this.y - s/2), s, s);
   c.restore();
 };
 
@@ -197,18 +197,21 @@ Pickup.prototype.update = function (dt, p) {
   return false;
 };
 Pickup.prototype.draw = function (c) {
-  var bob = Math.sin(this.t) * 2;
+  var bob = Math.floor(Math.sin(this.t) * 2);
   var col, sym;
   if (this.type === 'hp') { col = '#4ce39a'; sym = '♥'; }
   else if (this.type === 'mana') { col = '#4d9dff'; sym = '✦'; }
   else { col = '#ffc857'; sym = '◆'; }
   c.save();
   c.globalAlpha = this.life < 2 ? (0.3 + 0.7 * Math.abs(Math.sin(this.life * 10))) : 1;
+  // PIXEL: свечение + квадрат
   c.globalCompositeOperation = 'lighter';
-  Sprites.drawGlow(c, this.x, this.y + bob, this.r * 2.4, col, 0.4);
+  Sprites.drawGlow(c, this.x, this.y + bob, this.r * 2.4, col, 0.35);
   c.globalCompositeOperation = 'source-over';
+  c.fillStyle = '#000';
+  c.fillRect(Math.floor(this.x - this.r - 1), Math.floor(this.y + bob - this.r - 1), this.r * 2 + 2, this.r * 2 + 2);
   c.fillStyle = col;
-  c.beginPath(); c.arc(this.x, this.y + bob, this.r, 0, 6.2832); c.fill();
+  c.fillRect(Math.floor(this.x - this.r), Math.floor(this.y + bob - this.r), this.r * 2, this.r * 2);
   c.fillStyle = '#0a0714';
   c.font = 'bold 10px sans-serif';
   c.textAlign = 'center'; c.textBaseline = 'middle';
@@ -216,12 +219,11 @@ Pickup.prototype.draw = function (c) {
   c.restore();
 };
 
-/* ================= ВРАГИ — усилены ================= */
+/* ================= ВРАГИ ================= */
 function Enemy(x, y, typeKey, wave, isElite) {
   var base = ENEMY_TYPES[typeKey];
   this.type = typeKey; this.base = base;
 
-  // УСИЛЕНО: hp 0.20→0.26, sp 0.035→0.045 (макс 1.75→1.9), damage 0.10→0.13
   var hpScale = 1 + (wave - 1) * 0.26;
   var spScale = 1 + (wave - 1) * 0.045;
 
@@ -360,7 +362,7 @@ Enemy.prototype.draw = function (c) {
     c.save();
     c.globalCompositeOperation = 'lighter';
     var pulse = 0.85 + Math.sin(this.t * 4) * 0.15;
-    Sprites.drawGlow(c, this.x, this.y, r * 2.1 * pulse, '#ffc857', 0.35);
+    Sprites.drawGlow(c, this.x, this.y, r * 2.1 * pulse, '#ffc857', 0.3);
     c.globalCompositeOperation = 'source-over';
     c.restore();
   }
@@ -379,7 +381,7 @@ Enemy.prototype.draw = function (c) {
     c.save();
     c.globalCompositeOperation = 'lighter';
     var auraCol = this.poisonTimer > 0 ? '#4dcc30' : '#ff7a3c';
-    Sprites.drawGlow(c, 0, 0, r * 2, auraCol, 0.4);
+    Sprites.drawGlow(c, 0, 0, r * 1.9, auraCol, 0.35);
     c.globalCompositeOperation = 'source-over';
     c.restore();
   }
@@ -410,23 +412,25 @@ Enemy.prototype.draw = function (c) {
     c.arc(0, 0, r, 0, 6.2832);
   }
   c.fill();
+  // PIXEL ART: чёрный контур
+  c.strokeStyle = '#000';
+  c.lineWidth = 2;
+  c.stroke();
 
   c.fillStyle = flash ? '#ffffff' : (this.isElite ? '#ffc857' : b.color);
-  c.globalAlpha = 0.85;
+  c.globalAlpha = 0.9;
   c.beginPath(); c.arc(0, 0, r * 0.45, 0, 6.2832); c.fill();
   c.globalAlpha = 1;
 
   c.fillStyle = '#0a0714';
   var wob = Math.sin(this.wobble) * 1.4;
-  var er = Math.max(1.4, r * 0.13);
-  c.beginPath();
-  c.arc(-r * 0.28, -r * 0.12 + wob, er, 0, 6.2832);
-  c.arc(r * 0.28, -r * 0.12 + wob, er, 0, 6.2832);
-  c.fill();
+  var er = Math.max(1.5, r * 0.14);
+  c.fillRect(Math.floor(-r * 0.28 - er), Math.floor(-r * 0.12 + wob - er), er * 2, er * 2);
+  c.fillRect(Math.floor(r * 0.28 - er), Math.floor(-r * 0.12 + wob - er), er * 2, er * 2);
 
   if (b.glyph === 'imp') {
-    c.strokeStyle = flash ? '#fff' : (this.isElite ? '#ffc857' : b.color);
-    c.lineWidth = 2;
+    c.strokeStyle = flash ? '#fff' : '#000';
+    c.lineWidth = 2.5;
     c.beginPath();
     c.moveTo(-r * 0.55, -r * 0.75); c.lineTo(-r * 0.85, -r * 1.35);
     c.moveTo(r * 0.55, -r * 0.75); c.lineTo(r * 0.85, -r * 1.35);
@@ -434,7 +438,7 @@ Enemy.prototype.draw = function (c) {
   }
 
   if (this.isElite) {
-    c.strokeStyle = 'rgba(255,200,87,0.75)';
+    c.strokeStyle = '#ffc857';
     c.lineWidth = 2;
     c.beginPath(); c.arc(0, 0, r + 3, 0, 6.2832); c.stroke();
   }
@@ -444,20 +448,16 @@ Enemy.prototype.draw = function (c) {
   if (this.hp < this.maxHp && !this.isBoss) {
     var w = r * 2.1;
     var hx = this.x - w / 2, hy = this.y - r - 10;
-    c.fillStyle = 'rgba(0,0,0,0.55)';
-    c.fillRect(hx, hy, w, 3.5);
+    c.fillStyle = '#000';
+    c.fillRect(hx - 1, hy - 1, w + 2, 5);
     var f = this.hp / this.maxHp;
     if (f > 1) f = 1;
     c.fillStyle = f > 0.5 ? '#4ce39a' : (f > 0.22 ? '#ffc857' : '#ff5b6e');
     c.fillRect(hx, hy, w * f, 3.5);
-    if (this.isElite) {
-      c.fillStyle = '#ffc857';
-      c.beginPath(); c.arc(hx + w + 5, hy + 1.75, 2.2, 0, 6.2832); c.fill();
-    }
   }
 };
 
-/* ================= БОССЫ — усилены ================= */
+/* ================= БОССЫ ================= */
 function Boss(x, y, wave, bossType) {
   Enemy.call(this, x, y, 'brute', wave);
   this.isBoss = true;
@@ -468,7 +468,6 @@ function Boss(x, y, wave, bossType) {
   this.bossShape = bossType.shape;
   this.bossLevel = Math.floor(wave / 5);
 
-  // УСИЛЕНО: 420+320 → 520+400, damage 24+6 → 28+8
   this.maxHp = Math.round(520 + this.bossLevel * 400);
   this.speed = 34;
   this.radius = 38;
@@ -579,7 +578,7 @@ Boss.prototype.updateDevourer = function (dt, p) {
     this.chargeDir = { x: Math.cos(ca), y: Math.sin(ca) };
     this.chargeTime = 0.65;
     if (!Game.performanceMode) {
-      for (var k = 0; k < 10; k++) {
+      for (var k = 0; k < 8; k++) {
         var sa = Math.random() * 6.2832;
         var ss = 60 + Math.random() * 80;
         Game.particles.push(new Particle(this.x, this.y,
@@ -686,7 +685,6 @@ Boss.prototype.updateTitan = function (dt, p) {
     }
     if (!Game.performanceMode) {
       Game.particles.push(new RingParticle(this.x, this.y, radius, 0.5, this.bossColor, 5));
-      Game.particles.push(new RingParticle(this.x, this.y, radius * 0.7, 0.35, '#ffffff', 3));
     }
   }
   if (this.phase >= 2 && this.attackTimer <= 0 && d >= this.radius + 70 && d < 300) {
@@ -713,11 +711,6 @@ Boss.prototype.draw = function (c) {
     Sprites.drawGlow(c, 0, 0, r * 2.4 * pulse, color, 0.35);
     c.globalCompositeOperation = 'source-over';
     c.restore();
-  } else {
-    c.globalAlpha = 0.15;
-    c.fillStyle = color;
-    c.beginPath(); c.arc(0, 0, r * 1.8, 0, 6.2832); c.fill();
-    c.globalAlpha = 1;
   }
 
   if (this.slowTimer > 0) {
@@ -764,35 +757,31 @@ Boss.prototype.draw = function (c) {
     c.closePath();
   }
   c.fill();
-  c.strokeStyle = flash ? '#fff' : color;
-  c.lineWidth = 2.5;
+  c.strokeStyle = '#000';
+  c.lineWidth = 3;
+  c.stroke();
+  c.strokeStyle = color;
+  c.lineWidth = 1.5;
   c.stroke();
 
-  if (!perfMode) {
-    c.save();
-    c.globalCompositeOperation = 'lighter';
-    var corePulse = 1 + Math.sin(this.t * 5) * 0.2;
-    Sprites.drawGlow(c, 0, 0, r * 0.8 * corePulse, color, 0.85);
-    c.globalCompositeOperation = 'source-over';
-    c.restore();
-  } else {
-    c.fillStyle = color;
-    c.beginPath(); c.arc(0, 0, r * 0.4, 0, 6.2832); c.fill();
-  }
+  // Ядро
+  c.fillStyle = color;
+  c.fillRect(Math.floor(-r * 0.35), Math.floor(-r * 0.35), Math.floor(r * 0.7), Math.floor(r * 0.7));
 
+  // Глаза — пиксели
+  var eyeSize = Math.max(3, Math.floor(r * 0.14));
   c.fillStyle = '#0a0714';
-  c.beginPath();
-  c.arc(-r * 0.35, -r * 0.15, r * 0.11, 0, 6.2832);
-  c.arc(r * 0.35, -r * 0.15, r * 0.11, 0, 6.2832);
-  c.fill();
-  c.fillStyle = this.phase >= 3 ? '#ffc857' : color;
-  c.beginPath();
-  c.arc(-r * 0.35, -r * 0.15, r * 0.05, 0, 6.2832);
-  c.arc(r * 0.35, -r * 0.15, r * 0.05, 0, 6.2832);
-  c.fill();
+  c.fillRect(Math.floor(-r * 0.35 - eyeSize/2), Math.floor(-r * 0.15 - eyeSize/2), eyeSize, eyeSize);
+  c.fillRect(Math.floor(r * 0.35 - eyeSize/2), Math.floor(-r * 0.15 - eyeSize/2), eyeSize, eyeSize);
 
-  c.strokeStyle = flash ? '#fff' : (this.bossType === 'titan' ? '#ffe8a8' : color);
-  c.lineWidth = 3;
+  c.fillStyle = this.phase >= 3 ? '#ffc857' : '#fff';
+  var pupilSize = Math.max(2, Math.floor(eyeSize * 0.55));
+  c.fillRect(Math.floor(-r * 0.35 - pupilSize/2), Math.floor(-r * 0.15 - pupilSize/2), pupilSize, pupilSize);
+  c.fillRect(Math.floor(r * 0.35 - pupilSize/2), Math.floor(-r * 0.15 - pupilSize/2), pupilSize, pupilSize);
+
+  // Рога/корона
+  c.strokeStyle = '#000';
+  c.lineWidth = 4;
   c.lineCap = 'round';
   c.beginPath();
   if (this.bossType === 'devourer') {
@@ -812,6 +801,10 @@ Boss.prototype.draw = function (c) {
     c.lineTo(r * 0.5, -r * 0.95);
   }
   c.stroke();
+  c.strokeStyle = this.bossType === 'titan' ? '#ffe8a8' : color;
+  c.lineWidth = 2;
+  c.stroke();
+
   c.restore();
 };
 
@@ -889,11 +882,11 @@ Player.prototype.drawRune = function (c) {
     c.rotate(this.runeAngle);
     c.scale(pulse, pulse);
   }
-  c.strokeStyle = 'rgba(181, 107, 255, 0.35)';
-  c.lineWidth = 1.4;
+  c.strokeStyle = 'rgba(181, 107, 255, 0.45)';
+  c.lineWidth = 2;
   c.beginPath(); c.arc(0, 0, this.radius + 12, 0, 6.2832); c.stroke();
-  c.strokeStyle = 'rgba(181, 107, 255, 0.55)';
-  c.lineWidth = 1.6;
+  c.strokeStyle = 'rgba(181, 107, 255, 0.65)';
+  c.lineWidth = 2;
   c.beginPath();
   for (var i = 0; i < 6; i++) {
     var a = (i / 6) * 6.2832;
@@ -906,7 +899,7 @@ Player.prototype.drawRune = function (c) {
 };
 Player.prototype.draw = function (c) {
   var r = this.radius;
-  var bobY = Math.sin(this.bob) * 1.8;
+  var bobY = Math.floor(Math.sin(this.bob) * 1.5);
   var perfMode = (typeof Game !== 'undefined' && Game.performanceMode);
 
   if (this.invulnTimer > 0) {
@@ -937,13 +930,14 @@ Player.prototype.draw = function (c) {
   if (!perfMode) {
     c.save();
     c.globalCompositeOperation = 'lighter';
-    var auraA = 0.22 + Math.sin(this.bob * 0.6) * 0.06;
+    var auraA = 0.25 + Math.sin(this.bob * 0.6) * 0.06;
     Sprites.drawGlow(c, 0, 0, r * 3.1, '#8c6eff', auraA);
     c.globalCompositeOperation = 'source-over';
     c.restore();
   }
 
   var flash = this.hurtFlash > 0;
+  // Мантия
   c.fillStyle = flash ? '#ff8b9a' : '#2a1c52';
   c.beginPath();
   c.moveTo(0, -r * 1.15);
@@ -951,43 +945,58 @@ Player.prototype.draw = function (c) {
   c.lineTo(-r * 0.95, r * 1.05);
   c.quadraticCurveTo(-r * 1.15, -r * 0.1, 0, -r * 1.15);
   c.fill();
-
-  c.strokeStyle = flash ? '#fff' : '#7a5bcf';
-  c.lineWidth = 1.2;
-  c.beginPath();
-  c.moveTo(0, -r * 0.85);
-  c.lineTo(0, r * 0.95);
+  // PIXEL ART: чёрный контур
+  c.strokeStyle = '#000';
+  c.lineWidth = 2;
   c.stroke();
 
+  // Капюшон
   c.fillStyle = flash ? '#ffd0d6' : '#4a2f96';
-  c.beginPath(); c.arc(0, -r * 0.55, r * 0.62, 0, 6.2832); c.fill();
+  c.beginPath();
+  c.arc(0, -r * 0.55, r * 0.62, 0, 6.2832);
+  c.fill();
+  c.strokeStyle = '#000';
+  c.lineWidth = 2;
+  c.stroke();
 
+  // Лицо
   c.fillStyle = '#0a0714';
   c.beginPath(); c.arc(0, -r * 0.52, r * 0.40, 0, 6.2832); c.fill();
 
+  // Глаза — пиксели
+  var eyeSize = 3;
   c.fillStyle = this.castFlash > 0 ? '#ffffff' : '#8ad4ff';
-  c.beginPath();
-  c.arc(-r * 0.16, -r * 0.55, 1.9, 0, 6.2832);
-  c.arc(r * 0.16, -r * 0.55, 1.9, 0, 6.2832);
-  c.fill();
+  c.fillRect(Math.floor(-r * 0.16 - 1.5), Math.floor(-r * 0.55 - 1.5), eyeSize, eyeSize);
+  c.fillRect(Math.floor(r * 0.16 - 1.5), Math.floor(-r * 0.55 - 1.5), eyeSize, eyeSize);
 
+  // Посох
   c.rotate(this.facing);
-  c.strokeStyle = '#6b4a2a';
-  c.lineWidth = 2.6; c.lineCap = 'round';
+  c.strokeStyle = '#000';
+  c.lineWidth = 4;
+  c.lineCap = 'round';
   c.beginPath();
   c.moveTo(r * 0.6, r * 0.5);
   c.lineTo(r * 1.55, -r * 0.35);
   c.stroke();
+  c.strokeStyle = '#6b4a2a';
+  c.lineWidth = 2;
+  c.stroke();
 
-  var cs = this.castFlash > 0 ? 5.5 : 4;
-  var crystalColor = this.castFlash > 0 ? '#ffffff' : '#8ad4ff';
-  c.fillStyle = crystalColor;
-  c.beginPath();
-  c.moveTo(r * 1.55, -r * 0.35 - cs);
-  c.lineTo(r * 1.55 + cs * 0.7, -r * 0.35);
-  c.lineTo(r * 1.55, -r * 0.35 + cs);
-  c.lineTo(r * 1.55 - cs * 0.7, -r * 0.35);
-  c.closePath();
-  c.fill();
+  // Кристалл
+  var cs = this.castFlash > 0 ? 6 : 4;
+  c.fillStyle = this.castFlash > 0 ? '#ffffff' : '#8ad4ff';
+  c.fillRect(
+    Math.floor(r * 1.55 - cs/2),
+    Math.floor(-r * 0.35 - cs/2),
+    cs, cs
+  );
+  c.strokeStyle = '#000';
+  c.lineWidth = 1.5;
+  c.strokeRect(
+    Math.floor(r * 1.55 - cs/2),
+    Math.floor(-r * 0.35 - cs/2),
+    cs, cs
+  );
+
   c.restore();
 };

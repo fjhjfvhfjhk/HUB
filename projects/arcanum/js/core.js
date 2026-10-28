@@ -1,5 +1,5 @@
 /* ============================================================
-   CORE v7 — утилиты, звук, кеш спрайтов
+   CORE v9 — полный аудио-движок с музыкой + утилиты
    ============================================================ */
 
 window.onerror = function (msg, src, line, col, err) {
@@ -48,65 +48,30 @@ var Utils = {
 };
 
 /* ============================================================
-   SPRITES — предрендеренные спрайты (кеш)
-   Огромный буст производительности: вместо createRadialGradient
-   каждый кадр — один drawImage из кеша
+   SPRITES — предрендеренные спрайты (без градиентов в рантайме)
    ============================================================ */
 var Sprites = {
   _cache: {},
-  _size: 64,
-
   glow: function (hexColor) {
     var key = 'glow_' + hexColor;
     if (this._cache[key]) return this._cache[key];
-    var size = this._size;
+    var size = 48;
     var c = document.createElement('canvas');
     c.width = c.height = size;
     var ctx = c.getContext('2d');
     var n = parseInt(hexColor.replace('#', ''), 16);
     var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-    var grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    var grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
     grad.addColorStop(0, 'rgba(' + r + ',' + g + ',' + b + ',1)');
-    grad.addColorStop(0.35, 'rgba(' + r + ',' + g + ',' + b + ',0.55)');
-    grad.addColorStop(0.7, 'rgba(' + r + ',' + g + ',' + b + ',0.15)');
+    grad.addColorStop(0.4, 'rgba(' + r + ',' + g + ',' + b + ',0.4)');
     grad.addColorStop(1, 'rgba(' + r + ',' + g + ',' + b + ',0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
     this._cache[key] = c;
     return c;
   },
-
   drawGlow: function (ctx, x, y, radius, hexColor, alpha) {
     var sprite = this.glow(hexColor);
-    var prevAlpha = ctx.globalAlpha;
-    ctx.globalAlpha = alpha === undefined ? 1 : alpha;
-    ctx.drawImage(sprite, x - radius, y - radius, radius * 2, radius * 2);
-    ctx.globalAlpha = prevAlpha;
-  },
-
-  /* Мягкий "дым" — для poison cloud */
-  soft: function (hexColor) {
-    var key = 'soft_' + hexColor;
-    if (this._cache[key]) return this._cache[key];
-    var size = 128;
-    var c = document.createElement('canvas');
-    c.width = c.height = size;
-    var ctx = c.getContext('2d');
-    var n = parseInt(hexColor.replace('#', ''), 16);
-    var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-    var grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-    grad.addColorStop(0, 'rgba(' + r + ',' + g + ',' + b + ',0.8)');
-    grad.addColorStop(0.4, 'rgba(' + r + ',' + g + ',' + b + ',0.35)');
-    grad.addColorStop(0.8, 'rgba(' + r + ',' + g + ',' + b + ',0.08)');
-    grad.addColorStop(1, 'rgba(' + r + ',' + g + ',' + b + ',0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, size, size);
-    this._cache[key] = c;
-    return c;
-  },
-
-  drawSoft: function (ctx, x, y, radius, hexColor, alpha) {
-    var sprite = this.soft(hexColor);
     var prevAlpha = ctx.globalAlpha;
     ctx.globalAlpha = alpha === undefined ? 1 : alpha;
     ctx.drawImage(sprite, x - radius, y - radius, radius * 2, radius * 2);
@@ -114,42 +79,79 @@ var Sprites = {
   }
 };
 
+/* ============================================================
+   AUDIO2 — звук, SFX, музыка
+   ============================================================ */
 var Audio2 = {
-  ctx: null, master: null, enabled: true, _unlocked: false,
+  ctx: null,
+  master: null,
+  sfxGain: null,
+  musicGain: null,
+  enabled: true,
+  _unlocked: false,
+  muted: false,
+
   init: function () {
     if (this.ctx) return;
     try {
       var AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) { this.enabled = false; return; }
       this.ctx = new AC();
+
       this.master = this.ctx.createGain();
-      this.master.gain.value = 0.28;
+      this.master.gain.value = 0.7;
       this.master.connect(this.ctx.destination);
+
+      this.sfxGain = this.ctx.createGain();
+      this.sfxGain.gain.value = 1.0;
+      var sfxFilter = this.ctx.createBiquadFilter();
+      sfxFilter.type = 'lowpass';
+      sfxFilter.frequency.value = 8000;
+      this.sfxGain.connect(sfxFilter);
+      sfxFilter.connect(this.master);
+
+      this.musicGain = this.ctx.createGain();
+      this.musicGain.gain.value = 0.22;
+      this.musicGain.connect(this.master);
     } catch (e) { this.enabled = false; }
   },
+
   unlock: function () {
     if (this._unlocked) return;
     this.init();
-    if (this.ctx && this.ctx.state === 'suspended') { try { this.ctx.resume(); } catch (e) { } }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      try { this.ctx.resume(); } catch (e) { }
+    }
     this._unlocked = true;
   },
-  _tone: function (f, dur, type, vol, slide) {
-    if (!this.enabled || !this.ctx) return;
+
+  setMuted: function (m) {
+    this.muted = m;
+    if (this.master) {
+      this.master.gain.value = m ? 0 : 0.7;
+    }
+  },
+
+  /* -------- основной тон -------- */
+  _tone: function (freq, dur, type, vol, slideTo) {
+    if (!this.enabled || !this.ctx || this.muted) return;
     try {
       var t = this.ctx.currentTime;
       var o = this.ctx.createOscillator(), g = this.ctx.createGain();
       o.type = type || 'sine';
-      o.frequency.setValueAtTime(f, t);
-      if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, slide), t + dur);
+      o.frequency.setValueAtTime(freq, t);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + dur);
       g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(vol || 0.2, t + 0.008);
+      g.gain.linearRampToValueAtTime(vol || 0.15, t + 0.008);
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g); g.connect(this.master);
-      o.start(t); o.stop(t + dur + 0.02);
+      o.connect(g); g.connect(this.sfxGain);
+      o.start(t); o.stop(t + dur + 0.03);
     } catch (e) { }
   },
-  _noise: function (dur, vol, freq) {
-    if (!this.enabled || !this.ctx) return;
+
+  /* -------- шум -------- */
+  _noise: function (dur, vol, freq, type) {
+    if (!this.enabled || !this.ctx || this.muted) return;
     try {
       var t = this.ctx.currentTime;
       var len = Math.floor(this.ctx.sampleRate * dur);
@@ -157,30 +159,269 @@ var Audio2 = {
       var d = buf.getChannelData(0);
       for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
       var s = this.ctx.createBufferSource(); s.buffer = buf;
-      var f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq || 1200;
-      var g = this.ctx.createGain(); g.gain.value = vol || 0.2;
-      s.connect(f); f.connect(g); g.connect(this.master);
+      var f = this.ctx.createBiquadFilter();
+      f.type = type || 'lowpass';
+      f.frequency.value = freq || 1200;
+      var g = this.ctx.createGain(); g.gain.value = vol || 0.15;
+      s.connect(f); f.connect(g); g.connect(this.sfxGain);
       s.start(t);
     } catch (e) { }
   },
-  shoot:      function () { this._tone(620, 0.09, 'triangle', 0.10, 320); },
-  enemyHit:   function () { this._tone(240, 0.06, 'square', 0.06, 160); },
-  enemyDie:   function () { this._noise(0.2, 0.16, 900); this._tone(120, 0.22, 'sawtooth', 0.10, 50); },
-  castNova:   function () { this._tone(180, 0.45, 'sine', 0.18, 720); this._noise(0.35, 0.14, 2600); },
-  castFire:   function () { this._tone(140, 0.3, 'sawtooth', 0.14, 420); },
-  castChain:  function () { this._tone(900, 0.22, 'square', 0.10, 180); },
-  lock:       function () { this._tone(880, 0.08, 'square', 0.06, 1200); },
-  cardFlip:   function () { this._tone(340, 0.10, 'triangle', 0.08, 500); },
-  levelUp:    function () { this._tone(520, 0.14, 'sine', 0.16, 780); var s = this; setTimeout(function () { s._tone(780, 0.22, 'sine', 0.16, 1040); }, 110); },
-  playerHurt: function () { this._tone(180, 0.22, 'sawtooth', 0.16, 70); },
-  gameOver:   function () { this._tone(420, 0.5, 'sine', 0.20, 90); var s = this; setTimeout(function () { s._tone(280, 0.7, 'sine', 0.20, 60); }, 250); },
-  bossAppear: function () { this._tone(80, 1.0, 'sawtooth', 0.25, 40); this._noise(0.8, 0.20, 400); },
-  bossDie:    function () { this._tone(60, 1.2, 'sawtooth', 0.25, 30); this._noise(1.0, 0.22, 600); },
-  uiClick:    function () { this._tone(680, 0.05, 'square', 0.08); },
-  bookOpen:   function () { this._tone(440, 0.15, 'sine', 0.10, 660); },
-  buy:        function () { this._tone(700, 0.10, 'sine', 0.12, 1050); }
+
+  /* -------- арпеджио нот -------- */
+  _arp: function (freqs, spacing, vol, type) {
+    if (!this.enabled || !this.ctx || this.muted) return;
+    var self = this;
+    for (var i = 0; i < freqs.length; i++) {
+      (function (freq, delay) {
+        setTimeout(function () {
+          self._tone(freq, 0.15, type || 'square', vol || 0.1);
+        }, delay * 1000);
+      })(freqs[i], i * spacing);
+    }
+  },
+
+  /* ========== SFX ========== */
+
+  shoot: function () {
+    this._tone(700, 0.06, 'square', 0.07, 400);
+    this._noise(0.04, 0.04, 3000, 'highpass');
+  },
+
+  fireball: function () {
+    this._noise(0.2, 0.1, 800, 'lowpass');
+    this._tone(250, 0.25, 'sawtooth', 0.12, 100);
+  },
+
+  ice: function () {
+    this._tone(1200, 0.15, 'sine', 0.1, 1800);
+    this._tone(800, 0.2, 'triangle', 0.08, 1400);
+    this._noise(0.15, 0.06, 3000, 'highpass');
+  },
+
+  lightning: function () {
+    this._tone(1800, 0.12, 'sawtooth', 0.14, 400);
+    this._noise(0.25, 0.18, 2500, 'highpass');
+    this._tone(90, 0.35, 'sine', 0.12, 40);
+  },
+
+  meteor: function () {
+    this._tone(140, 0.55, 'sawtooth', 0.18, 40);
+    this._noise(0.45, 0.22, 500, 'lowpass');
+  },
+
+  shield: function () {
+    this._tone(440, 0.35, 'sine', 0.14, 880);
+    this._tone(660, 0.25, 'triangle', 0.09, 990);
+  },
+
+  teleport: function () {
+    this._tone(200, 0.18, 'sawtooth', 0.14, 2200);
+    this._noise(0.25, 0.12, 6000, 'highpass');
+  },
+
+  heal: function () {
+    this._arp([523, 659, 784, 1047], 0.08, 0.12, 'sine');
+  },
+
+  beam: function () {
+    this._tone(1200, 0.4, 'sawtooth', 0.14, 2400);
+    this._noise(0.35, 0.16, 6000, 'highpass');
+  },
+
+  poison: function () {
+    this._noise(0.5, 0.12, 900, 'lowpass');
+    this._tone(160, 0.35, 'sawtooth', 0.1, 80);
+  },
+
+  enemyHit: function () {
+    this._tone(320, 0.04, 'square', 0.05, 200);
+    this._noise(0.03, 0.06, 1500);
+  },
+
+  enemyDie: function () {
+    this._noise(0.12, 0.14, 800);
+    this._tone(180, 0.18, 'square', 0.09, 60);
+  },
+
+  playerHurt: function () {
+    this._tone(240, 0.18, 'sawtooth', 0.16, 80);
+    this._noise(0.08, 0.1, 400);
+  },
+
+  levelUp: function () {
+    this._arp([523, 659, 784], 0.07, 0.12, 'square');
+  },
+
+  gameOver: function () {
+    this._arp([440, 330, 262], 0.25, 0.14, 'sawtooth');
+    this._noise(0.8, 0.12, 300);
+  },
+
+  bossAppear: function () {
+    this._tone(60, 1.2, 'sawtooth', 0.22, 30);
+    this._noise(1.0, 0.16, 400);
+  },
+
+  bossDie: function () {
+    this._tone(40, 1.2, 'sawtooth', 0.22, 20);
+    this._noise(0.9, 0.18, 600);
+    this._arp([880, 660, 440], 0.12, 0.12, 'sine');
+  },
+
+  cardFlip: function () {
+    this._tone(900, 0.04, 'square', 0.07);
+    this._noise(0.06, 0.08, 2500, 'highpass');
+  },
+
+  uiClick: function () {
+    this._tone(1300, 0.02, 'square', 0.05);
+  },
+
+  bookOpen: function () {
+    this._noise(0.25, 0.08, 900);
+    this._tone(600, 0.12, 'sine', 0.08, 800);
+  },
+
+  buy: function () {
+    this._arp([1047, 1319], 0.05, 0.1, 'square');
+  },
+
+  achievement: function () {
+    this._arp([784, 1047, 1319, 1568], 0.08, 0.1, 'sine');
+  }
 };
 
+/* ============================================================
+   MUSIC — процедурная фоновая музыка
+   ============================================================ */
+var Music = {
+  enabled: true,
+  _currentTrack: null,
+  _timer: null,
+  _barCount: 0,
+  _started: false,
+
+  tracks: {
+    menu: {
+      bpm: 55,
+      bass: [110, 110, 146.83, 110],
+      scale: [220, 261.63, 293.66, 329.63, 392],
+      noteProb: 0.28,
+      noteVol: 0.06
+    },
+    combat: {
+      bpm: 95,
+      bass: [110, 110, 110, 146.83],
+      scale: [440, 523.25, 587.33, 659.25, 783.99],
+      noteProb: 0.45,
+      noteVol: 0.07
+    },
+    boss: {
+      bpm: 135,
+      bass: [82.41, 82.41, 110, 82.41],
+      scale: [329.63, 392, 440, 523.25, 587.33, 659.25],
+      noteProb: 0.62,
+      noteVol: 0.08
+    },
+    bloodmoon: {
+      bpm: 125,
+      bass: [103.83, 146.83],
+      scale: [207.65, 293.66, 311.13, 415.3],
+      noteProb: 0.55,
+      noteVol: 0.08
+    }
+  },
+
+  play: function (trackName) {
+    if (!Audio2.ctx || Audio2.muted || !this.enabled) return;
+    if (this._currentTrack === trackName) return;
+    if (!this.tracks[trackName]) return;
+
+    this._currentTrack = trackName;
+    this._barCount = 0;
+
+    if (this._timer) {
+      clearTimeout(this._timer);
+      this._timer = null;
+    }
+    this._scheduleBar();
+  },
+
+  stop: function () {
+    if (this._timer) {
+      clearTimeout(this._timer);
+      this._timer = null;
+    }
+    this._currentTrack = null;
+  },
+
+  _scheduleBar: function () {
+    if (!this._currentTrack || !Audio2.ctx || Audio2.muted) return;
+    var track = this.tracks[this._currentTrack];
+    if (!track) return;
+
+    var barDur = (60 / track.bpm) * 4;
+    var ctx = Audio2.ctx;
+    var t = ctx.currentTime;
+
+    // Bass drone
+    try {
+      var bassFreq = track.bass[this._barCount % track.bass.length];
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = bassFreq;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.12, t + 0.15);
+      gain.gain.setValueAtTime(0.10, t + barDur - 0.2);
+      gain.gain.linearRampToValueAtTime(0, t + barDur);
+      osc.connect(gain);
+      gain.connect(Audio2.musicGain);
+      osc.start(t);
+      osc.stop(t + barDur + 0.1);
+    } catch (e) { }
+
+    // Arpeggio
+    var beats = 8;
+    for (var i = 0; i < beats; i++) {
+      if (Math.random() < track.noteProb) {
+        var note = track.scale[Math.floor(Math.random() * track.scale.length)];
+        var noteDur = (barDur / beats) * 0.85;
+        var noteT = t + (i * barDur / beats);
+        this._playNote(note, noteDur, track.noteVol, noteT);
+      }
+    }
+
+    this._barCount++;
+
+    var self = this;
+    this._timer = setTimeout(function () {
+      self._scheduleBar();
+    }, (barDur - 0.15) * 1000);
+  },
+
+  _playNote: function (freq, dur, vol, time) {
+    try {
+      var ctx = Audio2.ctx;
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, time);
+      gain.gain.linearRampToValueAtTime(vol, time + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+      osc.connect(gain);
+      gain.connect(Audio2.musicGain);
+      osc.start(time);
+      osc.stop(time + dur + 0.05);
+    } catch (e) { }
+  }
+};
+
+/* ============================================================
+   SpatialGrid
+   ============================================================ */
 function SpatialGrid(cellSize) {
   this.cellSize = cellSize || 120;
   this.cells = {};
