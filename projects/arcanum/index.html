@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#0a0714">
 <title>Арканум — Магия</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✦</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -42,10 +45,10 @@
           <span class="btn-icon">📖</span>
           <span class="btn-text">КНИГА ДУШ</span>
         </button>
-        <button class="btn btn-ghost btn-with-icon" id="btn-fullscreen">
-          <span class="btn-icon">🖥</span>
-          <span class="btn-text">ПОЛНЫЙ ЭКРАН</span>
-        </button>
+        <div class="menu-small-actions">
+          <button class="btn btn-ghost btn-sm" id="btn-fullscreen">🖥 ЭКРАН</button>
+          <button class="btn btn-ghost btn-sm" id="btn-mute">🔊 ЗВУК</button>
+        </div>
       </div>
 
       <div class="menu-hints">
@@ -90,6 +93,7 @@
       <h2 class="title-sm">ПАУЗА</h2>
       <button class="btn btn-primary" id="btn-resume">ПРОДОЛЖИТЬ</button>
       <button class="btn btn-ghost" id="btn-fullscreen-2">🖥 ПОЛНЫЙ ЭКРАН</button>
+      <button class="btn btn-ghost" id="btn-mute-2">🔊 ЗВУК</button>
       <button class="btn btn-ghost" id="btn-quit">В МЕНЮ</button>
     </div>
   </div>
