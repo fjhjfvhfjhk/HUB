@@ -1,6 +1,5 @@
 /* ============================================================
-   GAME v8 — фикс aim, усиление волн, индикаторы заклинаний,
-   фильтр multi+pierce
+   GAME v9 — PIXEL ART + новые звуки
    ============================================================ */
 
 var Game = {
@@ -79,6 +78,12 @@ var Game = {
     this.generateStars();
     Book.init();
     this.setState('menu');
+    
+    // Запуск музыки меню
+    setTimeout(function() {
+      if (Audio2.ctx && !Audio2.muted) Music.play('menu');
+    }, 1000);
+
     this.lastTime = performance.now();
     requestAnimationFrame(function (t) { self.loop(t); });
   },
@@ -292,6 +297,20 @@ var Game = {
     on('btn-fullscreen',   function () { self.toggleFullscreen(); });
     on('btn-fullscreen-2', function () { self.toggleFullscreen(); });
     on('btn-class-back',   function () { Audio2.uiClick(); self.setState('menu'); });
+    
+    var btnMute = $('btn-mute');
+    var btnMute2 = $('btn-mute-2');
+    var toggleMute = function() {
+      Audio2.setMuted(!Audio2.muted);
+      var txt = Audio2.muted ? '🔇 ЗВУК' : '🔊 ЗВУК';
+      if (btnMute) btnMute.textContent = txt;
+      if (btnMute2) btnMute2.textContent = txt;
+      if (Audio2.muted) Music.stop();
+      else if (self.state === 'menu') Music.play('menu');
+      else Music.play('combat');
+    };
+    if (btnMute) btnMute.addEventListener('click', toggleMute);
+    if (btnMute2) btnMute2.addEventListener('click', toggleMute);
   },
 
   toggleFullscreen: function () {
@@ -365,6 +384,13 @@ var Game = {
     }
     var hud = document.getElementById('hud-buttons');
     if (hud) hud.style.display = (s === 'playing' || s === 'paused') ? 'block' : 'none';
+    
+    if (s === 'menu') { Music.play('menu'); }
+    else if (s === 'playing') { 
+      if (this.bloodMoonActive) Music.play('bloodmoon');
+      else if (this.bossActive) Music.play('boss');
+      else Music.play('combat'); 
+    }
   },
 
   bindInput: function () {
@@ -489,11 +515,6 @@ var Game = {
     this.aimVec.x = dx / l; this.aimVec.y = dy / l;
   },
 
-  /* ============================================================
-     ГЛАВНЫЙ ФИКС: направление заклинаний
-     Если игрок прицеливается — aimVec.
-     Иначе — направление движения или facing.
-     ============================================================ */
   getAimAngle: function () {
     if (this.aimActive || this.mouseDown) {
       return Math.atan2(this.aimVec.y, this.aimVec.x);
@@ -668,6 +689,7 @@ var Game = {
     var soulsEl = document.getElementById('over-souls');
     if (soulsEl) soulsEl.textContent = '+' + earned;
     this.setState('over');
+    Music.play('menu');
   },
 
   onPlayerDamaged: function () {
@@ -727,7 +749,7 @@ var Game = {
       '<span>' + a.name + '</span>' +
       '<span class="ach-souls">+' + a.souls + ' ✦</span>';
     container.appendChild(el);
-    Audio2.levelUp();
+    Audio2.achievement();
     Utils.vibrate(60);
     setTimeout(function () {
       if (el.parentNode) el.parentNode.removeChild(el);
@@ -748,9 +770,11 @@ var Game = {
         Utils.vibrate(200);
         Audio2.bossAppear();
         this.shake(12);
+        Music.play('bloodmoon');
       } else {
         this.bloodMoonActive = false;
         this.bloodMoonScoreMul = 1;
+        if (!this.bossActive) Music.play('combat');
       }
     } else {
       this.bloodMoonActive = false;
@@ -786,6 +810,7 @@ var Game = {
     for (var i = 0; i < 3; i++) {
       this.particles.push(new RingParticle(x, y, 100 + i * 60, 0.9, boss.bossColor, 4));
     }
+    Music.play('boss');
   },
 
   getMaxEnemiesForCurrentWave: function () {
@@ -794,7 +819,6 @@ var Game = {
 
   buildWave: function (wave) {
     var list = [];
-    // УСИЛЕНО: 1.5→1.9, кап 24→26
     var budget = Math.min(4 + wave * 1.9, 26);
     var pool = ['imp'];
     if (wave >= 2) pool.push('wraith');
@@ -807,7 +831,6 @@ var Game = {
       if (spent + cost > budget + 2) break;
       list.push(type); spent += cost;
     }
-    // УСИЛЕНО: min 0.5→0.6, кап 20→22
     var minCount = Math.min(5 + Math.floor(wave * 0.6), 22);
     while (list.length < minCount) list.push('imp');
     var cap = this.getMaxEnemiesForCurrentWave();
@@ -880,14 +903,10 @@ var Game = {
     }
   },
 
-  /* ============================================================
-     УЛУЧШЕНИЯ: фильтр maxLevel + исключение multi+pierce
-     ============================================================ */
   showUpgrades: function () {
     var waveEl = document.getElementById('up-wave');
     if (waveEl) waveEl.textContent = this.wave;
 
-    // Отфильтровать апгрейды по maxLevel
     var available = [];
     for (var i = 0; i < UPGRADES.length; i++) {
       var up = UPGRADES[i];
@@ -897,19 +916,17 @@ var Game = {
       }
       available.push(up);
     }
-    if (available.length < 3) available = UPGRADES.slice(); // safety
+    if (available.length < 3) available = UPGRADES.slice(); 
 
     var pool = Utils.shuffle(available.slice());
     var choices = pool.slice(0, 3);
 
-    // Исключить одновременное появление multi + pierce
     var hasMulti = false, hasPierce = false;
     for (var j = 0; j < choices.length; j++) {
       if (choices[j].id === 'multi') hasMulti = true;
       if (choices[j].id === 'pierce') hasPierce = true;
     }
     if (hasMulti && hasPierce) {
-      // Найти альтернативу
       for (var k = 3; k < pool.length; k++) {
         if (pool[k].id !== 'multi' && pool[k].id !== 'pierce') {
           for (var m = 0; m < choices.length; m++) {
@@ -988,7 +1005,6 @@ var Game = {
     var actualValue = choice.def.base * rarity.mult;
     choice.def.apply(this.player, actualValue);
 
-    // Счётчик уровней для maxLevel
     if (!this.player.upgradeCounts) this.player.upgradeCounts = {};
     this.player.upgradeCounts[choice.def.id] = (this.player.upgradeCounts[choice.def.id] || 0) + 1;
 
@@ -1050,7 +1066,7 @@ var Game = {
   },
 
   castNova: function (p) {
-    Audio2.castNova();
+    Audio2.ice();
     var radius = 175;
     var dmg = 34 * p.damageMul * (1 + (p.metaNovaDmg || 0));
     if (!this.performanceMode) {
@@ -1090,7 +1106,7 @@ var Game = {
   },
 
   castFireball: function (p) {
-    Audio2.castFire();
+    Audio2.fireball();
     var dmg = 46 * p.damageMul;
     var aimAngle = this.getAimAngle();
     var target = this.findAutoAimTarget(p.x, p.y, 560, aimAngle, Math.PI * 0.5);
@@ -1099,7 +1115,7 @@ var Game = {
       fireAngle = Math.atan2(target.y - p.y, target.x - p.x);
       this.lockTarget = target;
       this.lockTimer = 0.55;
-      Audio2.lock();
+      Audio2.uiClick();
       if (!this.performanceMode) {
         this.particles.push(new RingParticle(target.x, target.y, target.radius + 22, 0.35, '#ff9a3c', 2));
       }
@@ -1117,7 +1133,7 @@ var Game = {
   },
 
   castChain: function (p) {
-    Audio2.castChain();
+    Audio2.lightning();
     var maxJumps = p.chainMaxJumps || 4;
     var range = 220 + (p.metaChainRange || 0);
     var dmgBase = 26 * p.damageMul;
@@ -1169,7 +1185,7 @@ var Game = {
   },
 
   castMeteor: function (p) {
-    Audio2.castFire();
+    Audio2.fireball();
     var aimAngle = this.getAimAngle();
     var target = this.findAutoAimTarget(p.x, p.y, 600, aimAngle, Math.PI * 0.7);
     var tx, ty;
@@ -1189,11 +1205,11 @@ var Game = {
     };
     this.meteors.push(meteor);
     Utils.vibrate(30);
-    Audio2.lock();
+    Audio2.uiClick();
   },
 
   castShield: function (p) {
-    Audio2.castNova();
+    Audio2.shield();
     p.invulnTimer = 5;
     if (!this.performanceMode) {
       this.particles.push(new RingParticle(p.x, p.y, 80, 0.5, '#88ddff', 4));
@@ -1212,8 +1228,7 @@ var Game = {
   },
 
   castTeleport: function (p) {
-    Audio2.lock();
-    // ИСПРАВЛЕНО: getAimAngle учитывает движение и facing
+    Audio2.teleport();
     var angle = this.getAimAngle();
     var dist = 250;
 
@@ -1245,9 +1260,8 @@ var Game = {
   },
 
   castFrostbolt: function (p) {
-    Audio2.castNova();
+    Audio2.ice();
     var dmg = 30 * p.damageMul;
-    // ИСПРАВЛЕНО
     var angle = this.getAimAngle();
     if (this.projectiles.length >= this.maxProjectiles) return;
     var pr = new Projectile(p.x, p.y, angle, 700, dmg, {
@@ -1260,9 +1274,8 @@ var Game = {
     this.screenFlashColor = 'rgba(160,224,255,0.25)';
   },
 
-  /* ИСПРАВЛЕНО: раньше всегда летело вправо, теперь по направлению */
   castPoison: function (p) {
-    Audio2.castChain();
+    Audio2.poison();
     var angle = this.getAimAngle();
     var tx = p.x + Math.cos(angle) * 200;
     var ty = p.y + Math.sin(angle) * 200;
@@ -1270,7 +1283,6 @@ var Game = {
     var poisonDps = 10 * p.damageMul;
     var poisonDur = 5;
 
-    // Визуальное облако
     this._poisonClouds.push({
       x: tx, y: ty, radius: radius,
       life: poisonDur, maxLife: poisonDur
@@ -1304,7 +1316,7 @@ var Game = {
   },
 
   castHeal: function (p) {
-    Audio2.levelUp();
+    Audio2.heal();
     var healAmt = p.maxHp * 0.4;
     p.heal(healAmt);
     if (!this.performanceMode) {
@@ -1326,9 +1338,8 @@ var Game = {
     Utils.vibrate(25);
   },
 
-  /* ИСПРАВЛЕНО + чёткая визуализация луча */
   castBeam: function (p) {
-    Audio2.castChain();
+    Audio2.beam();
     var angle = this.getAimAngle();
     var len = 500;
     var dmgBase = 80 * p.damageMul;
@@ -1359,7 +1370,6 @@ var Game = {
       }
     }
 
-    // Чёткая визуализация луча
     this._beamEffect = {
       x1: p.x, y1: p.y,
       x2: p.x + cosA * len,
@@ -1390,6 +1400,7 @@ var Game = {
       mt.delay -= dt;
       if (!mt.impacted && mt.delay <= 0) {
         mt.impacted = true;
+        Audio2.meteor();
         for (var i = 0; i < this.enemies.length; i++) {
           var e = this.enemies[i];
           if (e.dead) continue;
@@ -1435,7 +1446,6 @@ var Game = {
     if (p.lifesteal > 0) p.heal(dmg * p.lifesteal);
   },
 
-  /* Штраф за количество снарядов: 0.92^(count-1) */
   updateBasicAttack: function (dt) {
     var p = this.player;
     this.boltCooldown -= dt;
@@ -1447,7 +1457,6 @@ var Game = {
     var baseAngle = this.getAimAngle();
     var count = p.projectiles;
     var spread = count > 1 ? 0.13 : 0;
-    // Штраф урона за каждый доп. снаряд
     var perShotMul = count > 1 ? Math.pow(0.92, count - 1) : 1;
     for (var i = 0; i < count; i++) {
       if (this.projectiles.length >= this.maxProjectiles) break;
@@ -1496,13 +1505,11 @@ var Game = {
       if (this.comboTimer <= 0) this.comboCount = 0;
     }
 
-    // Beam effect
     if (this._beamEffect) {
       this._beamEffect.life -= dt;
       if (this._beamEffect.life <= 0) this._beamEffect = null;
     }
 
-    // Poison clouds
     for (var pci = this._poisonClouds.length - 1; pci >= 0; pci--) {
       this._poisonClouds[pci].life -= dt;
       if (this._poisonClouds[pci].life <= 0) this._poisonClouds.splice(pci, 1);
@@ -1524,6 +1531,7 @@ var Game = {
           var drops = this.getBossDrops(e);
           for (var di = 0; di < drops.length; di++) this.pickups.push(drops[di]);
           this.checkAchievements();
+          Music.play('combat');
         }
         continue;
       }
@@ -1818,16 +1826,12 @@ var Game = {
     }
   },
 
-  /* ============================================================
-     Индикаторы направленных заклинаний
-     ============================================================ */
   drawSpellIndicators: function (ctx) {
     if (!this.aimActive && !this.mouseDown) return;
     var p = this.player;
     if (!p) return;
     var angle = this.getAimAngle();
 
-    // Лазер — линия
     if (this.hasSpell('beam')) {
       var len = 500;
       ctx.save();
@@ -1843,7 +1847,6 @@ var Game = {
       ctx.restore();
     }
 
-    // Ядовитое облако — круг в точке взгляда
     if (this.hasSpell('poison')) {
       var ptx = p.x + Math.cos(angle) * 200;
       var pty = p.y + Math.sin(angle) * 200;
@@ -1858,7 +1861,6 @@ var Game = {
       ctx.restore();
     }
 
-    // Метеор — круг
     if (this.hasSpell('meteor')) {
       var mx = p.x + Math.cos(angle) * 250;
       var my = p.y + Math.sin(angle) * 250;
@@ -1873,7 +1875,6 @@ var Game = {
       ctx.restore();
     }
 
-    // Телепорт — точка назначения с крестиком
     if (this.hasSpell('teleport')) {
       var tex = p.x + Math.cos(angle) * 250;
       var tey = p.y + Math.sin(angle) * 250;
@@ -1894,7 +1895,6 @@ var Game = {
     }
   },
 
-  /* ================= DRAW ================= */
   draw: function () {
     var ctx = this.ctx, W = this.W, H = this.H;
     this.performanceMode = this.lowQuality || this.bloodMoonActive;
@@ -1925,7 +1925,6 @@ var Game = {
     var viewT = this.camY - 50;
     var viewB = this.camY + H + 50;
 
-    // Poison clouds (под всеми)
     for (var pci = 0; pci < this._poisonClouds.length; pci++) {
       var pc = this._poisonClouds[pci];
       var alpha = Math.min(1, pc.life / pc.maxLife * 2) * 0.25;
@@ -1994,7 +1993,6 @@ var Game = {
     this.drawSpellIndicators(ctx);
     this.drawAutoAimReticle(ctx);
 
-    // Beam effect поверх
     if (this._beamEffect) {
       var be = this._beamEffect;
       var ba = be.life / be.maxLife;

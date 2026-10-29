@@ -1,6 +1,5 @@
 /* ============================================================
    CORE v9.1 — полный аудио-движок с музыкой + утилиты
-   Fixed: добавлены алиасы старых методов Audio2
    ============================================================ */
 
 window.onerror = function (msg, src, line, col, err) {
@@ -48,9 +47,6 @@ var Utils = {
   vibrate: function (ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { } }
 };
 
-/* ============================================================
-   SPRITES — предрендеренные спрайты (без градиентов в рантайме)
-   ============================================================ */
 var Sprites = {
   _cache: {},
   glow: function (hexColor) {
@@ -80,9 +76,6 @@ var Sprites = {
   }
 };
 
-/* ============================================================
-   AUDIO2 — звук, SFX, музыка
-   ============================================================ */
 var Audio2 = {
   ctx: null,
   master: null,
@@ -133,7 +126,6 @@ var Audio2 = {
     }
   },
 
-  /* -------- основной тон -------- */
   _tone: function (freq, dur, type, vol, slideTo) {
     if (!this.enabled || !this.ctx || this.muted) return;
     try {
@@ -150,7 +142,6 @@ var Audio2 = {
     } catch (e) { }
   },
 
-  /* -------- шум -------- */
   _noise: function (dur, vol, freq, type) {
     if (!this.enabled || !this.ctx || this.muted) return;
     try {
@@ -169,7 +160,6 @@ var Audio2 = {
     } catch (e) { }
   },
 
-  /* -------- арпеджио нот -------- */
   _arp: function (freqs, spacing, vol, type) {
     if (!this.enabled || !this.ctx || this.muted) return;
     var self = this;
@@ -181,8 +171,6 @@ var Audio2 = {
       })(freqs[i], i * spacing);
     }
   },
-
-  /* ========== SFX ========== */
 
   shoot: function () {
     this._tone(700, 0.06, 'square', 0.07, 400);
@@ -292,17 +280,13 @@ var Audio2 = {
     this._arp([784, 1047, 1319, 1568], 0.08, 0.1, 'sine');
   },
 
-  /* ========== LEGACY ALIASES ========== */
-  /* Нужны для совместимости с game.js */
+  /* LEGACY ALIASES */
   castNova: function () { this.ice(); },
   castFire: function () { this.fireball(); },
   castChain: function () { this.lightning(); },
   lock: function () { this.uiClick(); }
 };
 
-/* ============================================================
-   MUSIC — процедурная фоновая музыка
-   ============================================================ */
 var Music = {
   enabled: true,
   _currentTrack: null,
@@ -373,7 +357,6 @@ var Music = {
     var ctx = Audio2.ctx;
     var t = ctx.currentTime;
 
-    // Bass drone
     try {
       var bassFreq = track.bass[this._barCount % track.bass.length];
       var osc = ctx.createOscillator();
@@ -390,7 +373,6 @@ var Music = {
       osc.stop(t + barDur + 0.1);
     } catch (e) { }
 
-    // Arpeggio
     var beats = 8;
     for (var i = 0; i < beats; i++) {
       if (Math.random() < track.noteProb) {
@@ -427,9 +409,6 @@ var Music = {
   }
 };
 
-/* ============================================================
-   SpatialGrid
-   ============================================================ */
 function SpatialGrid(cellSize) {
   this.cellSize = cellSize || 120;
   this.cells = {};
