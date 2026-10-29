@@ -1,5 +1,6 @@
 /* ============================================================
-   CORE v9 — полный аудио-движок с музыкой + утилиты
+   CORE v9.1 — полный аудио-движок с музыкой + утилиты
+   Fixed: добавлены алиасы старых методов Audio2
    ============================================================ */
 
 window.onerror = function (msg, src, line, col, err) {
@@ -289,7 +290,14 @@ var Audio2 = {
 
   achievement: function () {
     this._arp([784, 1047, 1319, 1568], 0.08, 0.1, 'sine');
-  }
+  },
+
+  /* ========== LEGACY ALIASES ========== */
+  /* Нужны для совместимости с game.js */
+  castNova: function () { this.ice(); },
+  castFire: function () { this.fireball(); },
+  castChain: function () { this.lightning(); },
+  lock: function () { this.uiClick(); }
 };
 
 /* ============================================================
