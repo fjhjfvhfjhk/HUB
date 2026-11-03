@@ -1,6 +1,6 @@
 /* ============================================================================
    ХАБ ПРОЕКТОВ · hub.css
-   Тёмная тема, фиолетово-циановый акцент, современные карточки.
+   Тёмная тема, фиолетово-циановый акцент, современные карточки + раздел скинов.
    ============================================================================ */
 
 :root {
@@ -115,7 +115,7 @@ body { padding: 0 clamp(14px, 3vw, 32px) 40px; }
 }
 .brand__name { font-size: 15px; }
 
-.hub-nav { display: flex; gap: 6px; }
+.hub-nav { display: flex; gap: 6px; flex-wrap: wrap; }
 .hub-nav__btn {
   background: transparent;
   border: 1px solid transparent;
@@ -209,7 +209,7 @@ body { padding: 0 clamp(14px, 3vw, 32px) 40px; }
   color: var(--muted);
   font-size: clamp(14px, 1.6vw, 17px);
   margin: 0 auto 34px;
-  max-width: 520px;
+  max-width: 560px;
   line-height: 1.55;
 }
 .hero__stats {
@@ -236,6 +236,14 @@ body { padding: 0 clamp(14px, 3vw, 32px) 40px; }
   text-transform: uppercase;
   margin-top: 8px;
 }
+
+/* Переключение раздела: проекты ↔ скины */
+body.mode-skins #hero-default { display: none; }
+body:not(.mode-skins) #hero-skins { display: none; }
+body.mode-skins .tagbar { display: none; }
+body.mode-skins .grid { display: none; }
+body:not(.mode-skins) .skins-grid { display: none; }
+body.mode-skins #empty { display: none !important; }
 
 /* ---------------- Теги ---------------- */
 .tagbar {
@@ -273,7 +281,7 @@ body { padding: 0 clamp(14px, 3vw, 32px) 40px; }
   box-shadow: 0 4px 14px var(--accent-glow);
 }
 
-/* ---------------- Сетка ---------------- */
+/* ---------------- Сетка проектов ---------------- */
 .grid {
   position: relative;
   z-index: 1;
@@ -284,7 +292,7 @@ body { padding: 0 clamp(14px, 3vw, 32px) 40px; }
   gap: 18px;
 }
 
-/* ---------------- Карточка ---------------- */
+/* ---------------- Карточка проекта ---------------- */
 .card {
   position: relative;
   display: flex;
@@ -432,11 +440,157 @@ body { padding: 0 clamp(14px, 3vw, 32px) 40px; }
 .card__launch:active { transform: scale(0.97); }
 .card__launch svg { flex-shrink: 0; }
 
+/* ---------------- Скины ---------------- */
+.skins-grid {
+  position: relative;
+  z-index: 1;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.skin-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.25s var(--ease), border-color 0.2s, box-shadow 0.25s;
+  animation: cardIn 0.4s var(--ease) both;
+  cursor: pointer;
+}
+.skin-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-strong);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), 0 0 24px rgba(139, 92, 246, 0.15);
+}
+
+.skin-card__preview {
+  position: relative;
+  background: linear-gradient(160deg, #1a1830, #12111f);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 0;
+  min-height: 292px;
+  overflow: hidden;
+}
+.skin-card__preview canvas {
+  display: block;
+  cursor: pointer;
+  max-width: 100%;
+}
+.skin-card__loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--muted-2);
+  font-size: 12px;
+  pointer-events: none;
+}
+.skin-card__fallback {
+  max-width: 100%;
+  max-height: 260px;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+.skin-card__body {
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+.skin-card__name {
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  margin: 0;
+}
+.skin-card__desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+}
+.skin-card__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+}
+.skin-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #a5b4fc;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.skin-link:hover {
+  color: #fff;
+  background: rgba(139, 92, 246, 0.22);
+  border-color: var(--border-strong);
+}
+.skin-link svg { flex-shrink: 0; }
+
+.skin-card__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+.skin-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+.skin-btn:hover {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: var(--border-strong);
+}
+.skin-btn:active { transform: scale(0.97); }
+.skin-btn--primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 14px var(--accent-glow);
+}
+.skin-btn--primary:hover {
+  filter: brightness(1.1);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border-color: transparent;
+}
+
 /* ---------------- Пусто ---------------- */
 .empty {
   position: relative;
   z-index: 1;
-  max-width: 460px;
+  max-width: 500px;
   margin: 40px auto;
   padding: 40px 24px;
   text-align: center;
@@ -447,6 +601,14 @@ body { padding: 0 clamp(14px, 3vw, 32px) 40px; }
 .empty__icon { font-size: 44px; color: var(--muted); margin-bottom: 12px; line-height: 1; }
 .empty__title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
 .empty__text { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.empty code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #c4b5fd;
+}
 
 /* ---------------- Футер ---------------- */
 .hub-footer {
@@ -481,7 +643,7 @@ body { padding: 0 clamp(14px, 3vw, 32px) 40px; }
 }
 .hub-footer__reset:hover { color: var(--danger); text-decoration-color: var(--danger); }
 
-/* ---------------- Модалка ---------------- */
+/* ---------------- Модалка проекта ---------------- */
 .modal {
   position: fixed;
   inset: 0;
@@ -596,6 +758,127 @@ body { padding: 0 clamp(14px, 3vw, 32px) 40px; }
   display: block;
 }
 
+/* ---------------- Модалка скина ---------------- */
+.skin-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  padding: clamp(8px, 2vw, 22px);
+  animation: fadeIn 0.2s var(--ease);
+}
+.skin-modal[hidden] { display: none; }
+.skin-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 4, 12, 0.9);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.skin-modal__panel {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7);
+  animation: modalIn 0.25s var(--ease);
+}
+.skin-modal__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: rgba(10, 9, 21, 0.95);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.skin-modal__title {
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--text);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.skin-modal__close {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.skin-modal__close:hover {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: var(--border-strong);
+}
+.skin-modal__stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: linear-gradient(160deg, #1a1830, #12111f);
+  position: relative;
+  overflow: hidden;
+}
+.skin-modal__stage canvas {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+}
+.skin-modal__info {
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.55;
+  flex-shrink: 0;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.skin-modal__info p { margin: 0 0 8px; }
+.skin-modal__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 6px;
+}
+.skin-modal__links a {
+  color: #a5b4fc;
+  text-decoration: none;
+  font-weight: 600;
+}
+.skin-modal__links a:hover { color: #fff; text-decoration: underline; }
+.skin-modal__actions {
+  padding: 14px 18px calc(14px + env(safe-area-inset-bottom, 0));
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+  background: rgba(10, 9, 21, 0.85);
+}
+.skin-modal__actions .skin-btn {
+  padding: 12px 16px;
+  font-size: 13px;
+}
+
 /* ---------------- Toast ---------------- */
 .toast {
   position: fixed;
@@ -632,9 +915,12 @@ body { padding: 0 clamp(14px, 3vw, 32px) 40px; }
   .search { flex-basis: 100%; max-width: none; order: 2; }
   .hero { padding: 34px 0 28px; }
   .grid { grid-template-columns: 1fr; gap: 14px; }
+  .skins-grid { grid-template-columns: 1fr; gap: 14px; }
   .card { min-height: auto; padding: 18px; }
   .modal { padding: 0; }
   .modal__panel { border-radius: 0; border: none; }
+  .skin-modal { padding: 0; }
+  .skin-modal__panel { border-radius: 0; border: none; max-width: none; max-height: 100vh; height: 100%; }
   .modal__bar { padding: 8px 10px; }
   .btn span, .btn:not(.btn--icon):not([href]) { font-size: 11px; }
   .modal__actions .btn:first-child svg { display: none; }
@@ -644,6 +930,7 @@ body { padding: 0 clamp(14px, 3vw, 32px) 40px; }
   .hub-nav__btn { font-size: 12px; padding: 6px 10px; }
   .hero__stats { gap: 20px; }
   .stat__value { font-size: 24px; }
+  .skin-card__preview { min-height: 260px; }
 }
 
 /* Уменьшенное движение */

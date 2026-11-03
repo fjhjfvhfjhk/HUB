@@ -4,10 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0915">
-<meta name="description" content="Мой личный хаб веб-проектов — игры, эксперименты, песочницы">
+<meta name="description" content="Мой личный хаб веб-проектов и Minecraft-скинов">
 <title>Мои проекты</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="hub.css">
+<script src="https://cdn.jsdelivr.net/npm/skinview3d@3.0.1/bundles/skinview3d.bundle.min.js" defer></script>
 </head>
 <body>
 
@@ -27,7 +28,8 @@
   <nav class="hub-nav" aria-label="Фильтры">
     <button class="hub-nav__btn is-active" data-view="all">Все</button>
     <button class="hub-nav__btn" data-view="favorites">★ Избранное</button>
-    <button class="hub-nav__btn" data-view="recent">Недавние</button>
+    <button class="hub-nav__btn" data-view="recent">🕒 Недавние</button>
+    <button class="hub-nav__btn" data-view="skins">🎨 Скины</button>
   </nav>
 
   <div class="search">
@@ -39,8 +41,8 @@
   </div>
 </header>
 
-<!-- Hero -->
-<section class="hero">
+<!-- Hero: проекты -->
+<section class="hero" id="hero-default">
   <h1 class="hero__title">
     <span class="hero__title-grad">Коллекция проектов</span>
   </h1>
@@ -62,22 +64,62 @@
   </div>
 </section>
 
-<!-- Теги -->
+<!-- Hero: скины -->
+<section class="hero" id="hero-skins">
+  <h1 class="hero__title">
+    <span class="hero__title-grad">Мои скины</span>
+  </h1>
+  <p class="hero__subtitle">3D-просмотр, скачивание и ссылки на ely.by. Кликни на карточку — откроется большая модель.</p>
+
+  <div class="hero__stats" role="list">
+    <div class="stat" role="listitem">
+      <div class="stat__value" id="skin-total">0</div>
+      <div class="stat__label">скинов</div>
+    </div>
+  </div>
+</section>
+
+<!-- Теги проектов -->
 <section class="tagbar" id="tagbar" aria-label="Фильтр по категории">
   <button class="tag-chip is-active" data-tag="all">Все</button>
 </section>
 
-<!-- Сетка проектов -->
+<!-- Проекты -->
 <main class="grid" id="grid" aria-live="polite"></main>
 
-<!-- Пусто -->
+<!-- Скины -->
+<main class="skins-grid" id="skins-grid"></main>
+
+<!-- Пусто: проекты -->
 <div class="empty" id="empty" hidden>
   <div class="empty__icon">◌</div>
   <div class="empty__title">Ничего не найдено</div>
   <div class="empty__text" id="empty-text">Попробуй другой запрос или сними фильтр.</div>
 </div>
 
-<!-- Ошибка загрузки -->
+<!-- Пусто: скины -->
+<div class="empty" id="skins-empty" hidden>
+  <div class="empty__icon">🎨</div>
+  <div class="empty__title">Пока нет скинов</div>
+  <div class="empty__text">
+    Добавь PNG в папку <code>skins/</code> и запиши его в <code>skins.json</code>.
+    <br><br>
+    <code style="display:inline-block;text-align:left;padding:8px 12px;background:rgba(255,255,255,0.05);border-radius:6px;font-size:11px;line-height:1.6">
+      {<br>
+      &nbsp;&nbsp;"skins": [{<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;"id": "my-skin",<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;"name": "Основной скин",<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;"file": "skins/my-skin.png",<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;"skinLink": "https://ely.by/skins/BebriK118",<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;"author": "BebriK118",<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;"authorLink": "https://ely.by/profile/BebriK118"<br>
+      &nbsp;&nbsp;}]<br>
+      }
+    </code>
+  </div>
+</div>
+
+<!-- Ошибка загрузки projects.json -->
 <div class="empty" id="load-error" hidden>
   <div class="empty__icon">⚠</div>
   <div class="empty__title">Не удалось загрузить projects.json</div>
@@ -118,6 +160,31 @@
             allow="autoplay; fullscreen; gamepad; clipboard-write; clipboard-read; accelerometer; gyroscope"
             allowfullscreen
             referrerpolicy="no-referrer-when-downgrade"></iframe>
+  </div>
+</div>
+
+<!-- Модалка скина -->
+<div class="skin-modal" id="skin-modal" hidden role="dialog" aria-modal="true" aria-labelledby="skin-modal-title">
+  <div class="skin-modal__backdrop" data-skin-close="1"></div>
+  <div class="skin-modal__panel">
+    <div class="skin-modal__header">
+      <span class="skin-modal__title" id="skin-modal-title"></span>
+      <button class="skin-modal__close" data-skin-close="1" aria-label="Закрыть">×</button>
+    </div>
+    <div class="skin-modal__stage">
+      <canvas id="skin-modal-canvas"></canvas>
+    </div>
+    <div class="skin-modal__info" id="skin-modal-info"></div>
+    <div class="skin-modal__actions">
+      <button class="skin-btn skin-btn--primary" id="skin-modal-download" type="button">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        Скачать PNG
+      </button>
+    </div>
   </div>
 </div>
 

@@ -1,0 +1,13 @@
+{
+  "skins": [
+    {
+      "id": "bebrik118",
+      "name": "Основной скин",
+      "file": "skins/bebrik118.png",
+      "description": "Мой скин на сервере. Классическая модель (Steve, 64×64).",
+      "skinLink": "https://ely.by/skins/BebriK118",
+      "author": "BebriK118",
+      "authorLink": "https://ely.by/profile/BebriK118"
+    }
+  ]
+}
