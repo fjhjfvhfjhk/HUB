@@ -1,13 +1,31 @@
 {
   "skins": [
     {
-      "id": "bebrik118",
-      "name": "Основной скин",
-      "file": "skins/bebrik118.png",
-      "description": "Мой скин на сервере. Классическая модель (Steve, 64×64).",
-      "skinLink": "https://ely.by/skins/BebriK118",
+      "id": "aquarium-frutiger-aero",
+      "name": "🐠 AQUARIUM | Frutiger aero",
+      "file": "skins/aquarium-frutiger-aero.png",
+      "description": "Аквариум в стиле Frutiger aero. Двухслойный формат (1.8+).",
+      "skinLink": "https://ely.by/skins/s4498215",
       "author": "BebriK118",
-      "authorLink": "https://ely.by/profile/BebriK118"
+      "authorLink": "https://ely.by/u5114276"
+    },
+    {
+      "id": "monitor-frutiger-aero",
+      "name": "📟 MONITOR | Frutiger aero",
+      "file": "skins/monitor-frutiger-aero.png",
+      "description": "Монитор в стиле Frutiger aero. Двухслойный формат (1.8+).",
+      "skinLink": "https://ely.by/skins/s4508406",
+      "author": "BebriK118",
+      "authorLink": "https://ely.by/u5114276"
+    },
+    {
+      "id": "spirit-of-the-forest",
+      "name": "Spirit of the Forest",
+      "file": "skins/spirit-of-the-forest.png",
+      "description": "Дух леса. Двухслойный формат (1.8+).",
+      "skinLink": "https://ely.by/skins/s3834574",
+      "author": "BebriK118",
+      "authorLink": "https://ely.by/u5114276"
     }
   ]
 }
