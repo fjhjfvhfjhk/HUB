@@ -76,10 +76,6 @@
       <div class="stat__label">проектов</div>
     </div>
     <div class="stat" role="listitem">
-      <div class="stat__value" id="stat-tags">0</div>
-      <div class="stat__label">категорий</div>
-    </div>
-    <div class="stat" role="listitem">
       <div class="stat__value" id="stat-fav">0</div>
       <div class="stat__label">в избранном</div>
     </div>
@@ -101,10 +97,29 @@
   </div>
 </section>
 
-<!-- ═══════════ ТЕГИ ПРОЕКТОВ ═══════════ -->
-<section class="tagbar" id="tagbar" aria-label="Фильтр по категории">
-  <button class="tag-chip is-active" data-tag="all">Все</button>
-</section>
+<!-- ═══════════ ФИЛЬТР КАТЕГОРИЙ (раскрывающийся) ═══════════ -->
+<div class="tagbar" id="tagbar">
+  <button class="tagbar__trigger" id="tagbar-trigger" type="button"
+          aria-expanded="false" aria-controls="tagbar-menu">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 6h18M6 12h12M10 18h4"></path>
+    </svg>
+    <span id="tagbar-label">Категории</span>
+    <svg class="tagbar__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+         aria-hidden="true">
+      <path d="m6 9 6 6 6-6"></path>
+    </svg>
+  </button>
+
+  <div class="tagbar__menu" id="tagbar-menu" hidden>
+    <div class="tagbar__menu-inner">
+      <button class="tag-chip is-active" data-tag="all" type="button">Все</button>
+      <!-- Остальные теги генерирует JS -->
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════ ПРОЕКТЫ ═══════════ -->
 <main class="grid" id="grid" aria-live="polite"></main>

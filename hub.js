@@ -1,16 +1,17 @@
 /* ============================================================================
-   ХАБ ПРОЕКТОВ · hub.js · v2026-11-04-1 (NEO-BRUTALIST)
+   ХАБ ПРОЕКТОВ · hub.js · v2026-11-04-3
 
    Что нового:
-     • Поддержка iconSvg + color в projects.json (SVG-иконки из inline-спрайта,
-       бруталистские цветные карточки).
-     • Всё остальное (поиск, фильтры, избранное, скины, cache-busting, cleanup SW)
-       сохранено без изменений.
+     • Возвращён фильтр категорий, но в виде выпадающего меню (кнопка
+       «Категории ▾» в hero). Клик по триггеру открывает панель с тегами.
+     • Кнопка показывает активный тег, если выбран не "Все".
+     • Клик вне меню и Escape закрывают меню.
+     • Статы в hero: проекты и избранное.
    ============================================================================ */
 (function () {
   'use strict';
 
-  const HUB_VERSION = '2026-11-04-1';
+  const HUB_VERSION = '2026-11-04-3';
   const STORAGE_FAV = 'hub_favorites_v1';
   const STORAGE_RECENT = 'hub_recent_v1';
   const CLEAN_KEY = 'hub_cleaned_' + HUB_VERSION;
@@ -22,14 +23,12 @@
 
   const grid         = $('#grid');
   const skinsGrid    = $('#skins-grid');
-  const tagbar       = $('#tagbar');
   const searchInp    = $('#search-input');
   const emptyEl      = $('#empty');
   const emptyText    = $('#empty-text');
   const skinsEmptyEl = $('#skins-empty');
   const loadErr      = $('#load-error');
   const statTotal    = $('#stat-total');
-  const statTags     = $('#stat-tags');
   const statFav      = $('#stat-fav');
   const skinTotal    = $('#skin-total');
   const modal        = $('#modal');
@@ -45,13 +44,19 @@
   const toastEl      = $('#toast');
   const resetBtn     = $('#reset-btn');
 
+  const tagbar        = $('#tagbar');
+  const tagbarTrigger = $('#tagbar-trigger');
+  const tagbarLabel   = $('#tagbar-label');
+  const tagbarMenu    = $('#tagbar-menu');
+  const tagbarInner   = tagbarMenu ? tagbarMenu.querySelector('.tagbar__menu-inner') : null;
+
   /* ---------------- State ---------------- */
   let allProjects = [];
   let allSkins    = [];
   let favorites   = loadSet(STORAGE_FAV);
   let recent      = loadArray(STORAGE_RECENT);
-  let activeView  = 'all';   // all | favorites | recent | skins
-  let activeTag   = 'all';
+  let activeView  = 'all';    // all | favorites | recent | skins
+  let activeTag   = 'all';    // 'all' или конкретный тег
   let query       = '';
   let openProject = null;
   let openSkin    = null;
@@ -87,12 +92,6 @@
     }[c]));
   }
 
-  /**
-   * Иконка проекта.
-   * Приоритет:
-   *   1. proj.iconSvg — id <symbol> из inline SVG-спрайта в index.html
-   *   2. proj.icon — если начинается с "<" → inline SVG, иначе эмодзи/символ
-   */
   function pickIconHtml(proj) {
     if (!proj) return '<span>◈</span>';
     if (proj.iconSvg) {
@@ -191,6 +190,7 @@
     updateStats();
     bindEvents();
     bindHashChange();
+    bindTagbar();
     loadSkins();
     fetchProjects();
   }
@@ -206,14 +206,6 @@
       btn.addEventListener('click', () => {
         setView(btn.dataset.view);
       });
-    });
-
-    tagbar.addEventListener('click', (e) => {
-      const chip = e.target.closest('.tag-chip');
-      if (!chip) return;
-      activeTag = chip.dataset.tag;
-      $$('.tag-chip').forEach((c) => c.classList.toggle('is-active', c === chip));
-      render();
     });
 
     grid.addEventListener('click', (e) => {
@@ -280,6 +272,7 @@
       if (e.key === 'Escape') {
         if (skinModal && !skinModal.hidden) { closeSkinModal(); return; }
         if (!modal.hidden) { closeProjectModal(); return; }
+        if (isTagbarOpen()) { closeTagbar(); return; }
       }
       if (e.key === '/' && document.activeElement !== searchInp && activeView !== 'skins') {
         e.preventDefault();
@@ -322,6 +315,93 @@
     });
   }
 
+  /* ---------------- Tagbar ---------------- */
+  function bindTagbar() {
+    if (!tagbarTrigger) return;
+
+    tagbarTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (isTagbarOpen()) closeTagbar();
+      else openTagbar();
+    });
+
+    // Клик по chip внутри меню
+    if (tagbarMenu) {
+      tagbarMenu.addEventListener('click', (e) => {
+        const chip = e.target.closest('.tag-chip');
+        if (!chip) return;
+        e.stopPropagation();
+        activeTag = chip.dataset.tag;
+        updateTagbarUI();
+        render();
+        closeTagbar();
+      });
+    }
+
+    // Клик вне tagbar — закрывает меню
+    document.addEventListener('click', (e) => {
+      if (!tagbar) return;
+      if (!tagbar.contains(e.target)) {
+        if (isTagbarOpen()) closeTagbar();
+      }
+    });
+  }
+
+  function isTagbarOpen() {
+    return tagbarMenu && !tagbarMenu.hidden;
+  }
+  function openTagbar() {
+    if (!tagbarMenu) return;
+    tagbarMenu.hidden = false;
+    if (tagbarTrigger) tagbarTrigger.setAttribute('aria-expanded', 'true');
+  }
+  function closeTagbar() {
+    if (!tagbarMenu) return;
+    tagbarMenu.hidden = true;
+    if (tagbarTrigger) tagbarTrigger.setAttribute('aria-expanded', 'false');
+  }
+
+  function buildTagBar() {
+    if (!tagbarInner) return;
+
+    const tagSet = new Set();
+    allProjects.forEach((p) => (p.tags || []).forEach((t) => tagSet.add(t)));
+
+    const html = [`<button class="tag-chip${activeTag === 'all' ? ' is-active' : ''}" data-tag="all" type="button">Все</button>`];
+    Array.from(tagSet).sort().forEach((t) => {
+      const active = t === activeTag ? ' is-active' : '';
+      html.push(
+        `<button class="tag-chip${active}" data-tag="${escapeHtml(t)}" type="button">${escapeHtml(t)}</button>`
+      );
+    });
+    tagbarInner.innerHTML = html.join('');
+
+    // Если активный тег пропал (тегов нет в проектах) — сбрасываем
+    if (activeTag !== 'all' && !tagSet.has(activeTag)) {
+      activeTag = 'all';
+    }
+    updateTagbarUI();
+  }
+
+  function updateTagbarUI() {
+    if (!tagbarTrigger) return;
+
+    // Обновляем активный chip
+    if (tagbarInner) {
+      tagbarInner.querySelectorAll('.tag-chip').forEach((c) => {
+        c.classList.toggle('is-active', c.dataset.tag === activeTag);
+      });
+    }
+
+    // Обновляем подпись на триггере
+    if (tagbarLabel) {
+      tagbarLabel.textContent = activeTag === 'all' ? 'Категории' : activeTag;
+    }
+
+    // Подсветка кнопки, когда фильтр активен
+    tagbarTrigger.classList.toggle('has-filter', activeTag !== 'all');
+  }
+
   /* ---------------- Переключение раздела ---------------- */
   function setView(view) {
     activeView = view;
@@ -335,6 +415,7 @@
 
     if (isSkins) {
       if (!modal.hidden) closeProjectModal({ updateHash: false });
+      closeTagbar();
       if (searchInp) {
         searchInp.placeholder = 'Поиск по скинам…';
         searchInp.value = '';
@@ -431,30 +512,10 @@
   /* ---------------- Статистика ---------------- */
   function updateStats() {
     statTotal.textContent = allProjects.length;
-    const tagSet = new Set();
-    allProjects.forEach((p) => (p.tags || []).forEach((t) => tagSet.add(t)));
-    statTags.textContent = tagSet.size;
     statFav.textContent = favorites.size;
   }
   function updateSkinStats() {
     if (skinTotal) skinTotal.textContent = allSkins.length;
-  }
-
-  /* ---------------- Теги ---------------- */
-  function buildTagBar() {
-    const tagSet = new Set();
-    allProjects.forEach((p) => (p.tags || []).forEach((t) => tagSet.add(t)));
-
-    const html = ['<button class="tag-chip is-active" data-tag="all">Все</button>'];
-    Array.from(tagSet).sort().forEach((t) => {
-      html.push(`<button class="tag-chip" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</button>`);
-    });
-    tagbar.innerHTML = html.join('');
-
-    if (activeTag !== 'all' && !tagSet.has(activeTag)) {
-      activeTag = 'all';
-      $$('.tag-chip').forEach((c) => c.classList.toggle('is-active', c.dataset.tag === 'all'));
-    }
   }
 
   /* ---------------- Фильтрация ---------------- */
@@ -498,8 +559,10 @@
         emptyText.textContent = 'Здесь появятся проекты, которые ты запускал.';
       } else if (query) {
         emptyText.textContent = `По запросу "${query}" ничего не нашлось.`;
+      } else if (activeTag !== 'all') {
+        emptyText.textContent = `Проектов в категории "${activeTag}" пока нет.`;
       } else {
-        emptyText.textContent = 'Попробуй снять фильтр или выбрать другой тег.';
+        emptyText.textContent = 'Пока нет ни одного проекта.';
       }
       return;
     }
