@@ -1,19 +1,16 @@
 /* ============================================================================
-   ХАБ ПРОЕКТОВ · hub.js · v2026-11-03-1
+   ХАБ ПРОЕКТОВ · hub.js · v2026-11-04-1 (NEO-BRUTALIST)
 
    Что нового:
-     • Раздел «🎨 Скины»: список скинов из skins.json, 3D-просмотр через
-       skinview3d (CDN), кнопка скачать PNG, ссылки на ely.by (скин + автор).
-     • Lazy init 3D через IntersectionObserver — не создаём десятки
-       Three.js-контекстов сразу. При уходе с раздела — dispose().
-     • Cache-busting для iframe проектов: HEAD → Last-Modified → ?v=.
-     • Одноразовая очистка устаревших Service Worker из /projects/*.
-
+     • Поддержка iconSvg + color в projects.json (SVG-иконки из inline-спрайта,
+       бруталистские цветные карточки).
+     • Всё остальное (поиск, фильтры, избранное, скины, cache-busting, cleanup SW)
+       сохранено без изменений.
    ============================================================================ */
 (function () {
   'use strict';
 
-  const HUB_VERSION = '2026-11-03-1';
+  const HUB_VERSION = '2026-11-04-1';
   const STORAGE_FAV = 'hub_favorites_v1';
   const STORAGE_RECENT = 'hub_recent_v1';
   const CLEAN_KEY = 'hub_cleaned_' + HUB_VERSION;
@@ -58,7 +55,7 @@
   let query       = '';
   let openProject = null;
   let openSkin    = null;
-  let skinViewers = new Map();   // id -> SkinViewer instance
+  let skinViewers = new Map();
   let skinObserver = null;
 
   /* ---------------- Хранилище ---------------- */
@@ -89,11 +86,25 @@
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[c]));
   }
-  function pickIconHtml(icon) {
+
+  /**
+   * Иконка проекта.
+   * Приоритет:
+   *   1. proj.iconSvg — id <symbol> из inline SVG-спрайта в index.html
+   *   2. proj.icon — если начинается с "<" → inline SVG, иначе эмодзи/символ
+   */
+  function pickIconHtml(proj) {
+    if (!proj) return '<span>◈</span>';
+    if (proj.iconSvg) {
+      const id = String(proj.iconSvg).replace(/[^a-z0-9_-]/gi, '');
+      return `<svg viewBox="0 0 32 32" aria-hidden="true"><use href="#${id}"/></svg>`;
+    }
+    const icon = proj.icon;
     if (!icon) return '<span>◈</span>';
     if (typeof icon === 'string' && icon.trim().startsWith('<')) return icon;
     return `<span>${escapeHtml(icon)}</span>`;
   }
+
   function safePath(p) {
     if (!p) return '';
     let path = String(p).replace(/^\/+/, '');
@@ -111,13 +122,11 @@
       setTimeout(() => { toastEl.hidden = true; }, 250);
     }, 1800);
   }
-  function hexToRgba(hex, a) {
-    const h = hex.replace('#', '');
-    if (h.length !== 6) return `rgba(139,92,246,${a})`;
-    const r = parseInt(h.slice(0, 2), 16);
-    const g = parseInt(h.slice(2, 4), 16);
-    const b = parseInt(h.slice(4, 6), 16);
-    return `rgba(${r},${g},${b},${a})`;
+
+  const ALLOWED_COLORS = ['yellow','pink','blue','green','orange','purple'];
+  function normalizeColor(c) {
+    if (c && ALLOWED_COLORS.includes(c)) return c;
+    return 'yellow';
   }
 
   /* ---------------- Cache-busting версия проекта ---------------- */
@@ -134,7 +143,7 @@
         const etag = res.headers.get('etag');
         if (etag) return 'et' + etag.replace(/[^a-z0-9]/gi, '').slice(0, 20);
       }
-    } catch (e) { /* offline fallback */ }
+    } catch (e) {}
     const v = proj.version || proj.added || '1';
     return 'fb' + String(v).replace(/[^a-z0-9]/gi, '');
   }
@@ -207,7 +216,6 @@
       render();
     });
 
-    /* Клики по проектам */
     grid.addEventListener('click', (e) => {
       const favBtn = e.target.closest('.card__fav');
       if (favBtn) {
@@ -230,15 +238,6 @@
       }
     });
 
-    grid.addEventListener('mousemove', (e) => {
-      const card = e.target.closest('.card');
-      if (!card) return;
-      const r = card.getBoundingClientRect();
-      card.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100) + '%');
-      card.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100) + '%');
-    });
-
-    /* Клики по скинам */
     if (skinsGrid) {
       skinsGrid.addEventListener('click', (e) => {
         const actionBtn = e.target.closest('[data-skin-action]');
@@ -252,7 +251,6 @@
           else if (action === 'view') openSkinModal(skin);
           return;
         }
-        // Клик по карточке (не по ссылке) → открыть модалку
         if (e.target.closest('a')) return;
         const card = e.target.closest('.skin-card');
         if (card && card.dataset.id) {
@@ -262,26 +260,22 @@
       });
     }
 
-    /* Модалка проекта */
     modal.addEventListener('click', (e) => {
       if (e.target.closest('[data-close]')) closeProjectModal();
     });
 
-    /* Модалка скина */
     if (skinModal) {
       skinModal.addEventListener('click', (e) => {
         if (e.target.closest('[data-skin-close]')) closeSkinModal();
       });
     }
 
-    /* Скачать из модалки скина */
     if (skinModalDownload) {
       skinModalDownload.addEventListener('click', () => {
         if (openSkin) downloadSkin(openSkin);
       });
     }
 
-    /* Горячие клавиши */
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         if (skinModal && !skinModal.hidden) { closeSkinModal(); return; }
@@ -340,9 +334,7 @@
     });
 
     if (isSkins) {
-      // Закрываем открытые чужие модалки
       if (!modal.hidden) closeProjectModal({ updateHash: false });
-      // Меняем placeholder поиска
       if (searchInp) {
         searchInp.placeholder = 'Поиск по скинам…';
         searchInp.value = '';
@@ -352,7 +344,7 @@
     } else {
       if (!skinModal.hidden) closeSkinModal({ updateHash: false });
       disposeAllSkinViewers();
-      if (searchInp) searchInp.placeholder = 'Поиск проекта…';
+      if (searchInp) searchInp.placeholder = 'Поиск…';
       render();
     }
   }
@@ -360,7 +352,6 @@
   /* ---------------- Hash ---------------- */
   function bindHashChange() {
     window.addEventListener('hashchange', () => {
-      // Проект
       const mp = location.hash.match(/^#project=(.+)$/);
       if (mp && allProjects.length) {
         if (activeView === 'skins') setView('all');
@@ -368,7 +359,6 @@
         if (proj) openProjectModal(proj, { updateHash: false });
         return;
       }
-      // Скин
       const ms = location.hash.match(/^#skin=(.+)$/);
       if (ms && allSkins.length) {
         if (activeView !== 'skins') setView('skins');
@@ -376,7 +366,6 @@
         if (skin) openSkinModal(skin, { updateHash: false });
         return;
       }
-      // Пусто — закрываем всё
       if (!modal.hidden) closeProjectModal({ updateHash: false });
       if (skinModal && !skinModal.hidden) closeSkinModal({ updateHash: false });
     });
@@ -421,10 +410,8 @@
 
       allSkins = data.skins.filter((s) => s && s.id && s.name && s.file);
       updateSkinStats();
-      // Если открыт раздел скинов — рендерим
       if (activeView === 'skins') renderSkins();
 
-      // Прямая ссылка через hash
       const ms = location.hash.match(/^#skin=(.+)$/);
       if (ms) {
         const skin = allSkins.find((s) => s.id === ms[1]);
@@ -470,7 +457,7 @@
     }
   }
 
-  /* ---------------- Фильтрация проектов ---------------- */
+  /* ---------------- Фильтрация ---------------- */
   function getVisibleProjects() {
     return allProjects.filter((p) => {
       if (activeView === 'favorites' && !favorites.has(p.id)) return false;
@@ -518,33 +505,27 @@
     }
 
     emptyEl.hidden = true;
-    grid.innerHTML = list.map((p, i) => cardHtml(p, i)).join('');
+    grid.innerHTML = list.map((p) => cardHtml(p)).join('');
   }
 
-  function cardHtml(p, index) {
-    const accent = p.accent || '#8b5cf6';
+  function cardHtml(p) {
+    const color = normalizeColor(p.color);
     const isFav = favorites.has(p.id);
     const tags = (p.tags || []).map((t) => `<span class="card__tag">${escapeHtml(t)}</span>`).join('');
     const desc = escapeHtml(p.desc || p.description || '');
-    const styleVars = [
-      `--icon-bg:${hexToRgba(accent, 0.22)}`,
-      `--icon-glow:${hexToRgba(accent, 0.28)}`,
-      `--card-accent-glow:${hexToRgba(accent, 0.18)}`,
-    ].join(';');
 
     return `
-      <article class="card" data-id="${escapeHtml(p.id)}" style="${styleVars};animation-delay:${Math.min(index * 40, 400)}ms">
-        <button class="card__fav ${isFav ? 'is-fav' : ''}" data-id="${escapeHtml(p.id)}" aria-label="${isFav ? 'Убрать из избранного' : 'В избранное'}">
+      <article class="card card--${color}" data-id="${escapeHtml(p.id)}">
+        <button class="card__fav ${isFav ? 'is-fav' : ''}" data-id="${escapeHtml(p.id)}"
+                aria-label="${isFav ? 'Убрать из избранного' : 'В избранное'}">
           ${isFav ? '★' : '☆'}
         </button>
-        <div class="card__icon">${pickIconHtml(p.icon)}</div>
+        <div class="card__icon">${pickIconHtml(p)}</div>
         <h2 class="card__name">${escapeHtml(p.name)}</h2>
         <p class="card__desc">${desc}</p>
         <div class="card__tags">${tags}</div>
         <button class="card__launch" data-id="${escapeHtml(p.id)}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M8 5v14l11-7z"/>
-          </svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
           Запустить
         </button>
       </article>
@@ -558,7 +539,7 @@
       toast('Убрано из избранного');
     } else {
       favorites.add(id);
-      toast('Добавлено в избранное ★');
+      toast('В избранном ★');
     }
     saveSet(STORAGE_FAV, favorites);
     updateStats();
@@ -579,7 +560,7 @@
     if (!proj) return;
     openProject = proj;
 
-    modalIcon.innerHTML = pickIconHtml(proj.icon);
+    modalIcon.innerHTML = pickIconHtml(proj);
     modalTitle.textContent = proj.name;
     modal.hidden = false;
     document.body.style.overflow = 'hidden';
@@ -625,23 +606,29 @@
 
     if (skinsEmptyEl) skinsEmptyEl.hidden = true;
     skinsGrid.hidden = false;
-    skinsGrid.innerHTML = allSkins.map((s, i) => skinCardHtml(s, i)).join('');
+    skinsGrid.innerHTML = allSkins.map((s) => skinCardHtml(s)).join('');
     observeSkinCards();
   }
 
-  function skinCardHtml(s, index) {
+  function skinCardHtml(s) {
     const safe = escapeHtml;
     const desc = s.description ? `<p class="skin-card__desc">${safe(s.description)}</p>` : '';
     const skinLink = s.skinLink ? `
-      <a href="${safe(s.skinLink)}" target="_blank" rel="noopener" class="skin-link" title="Открыть скин на ely.by">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M21 14v7H3V3h7"></path>
+      <a href="${safe(s.skinLink)}" target="_blank" rel="noopener" class="skin-link"
+         title="Открыть скин на ely.by">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 3h6v6"></path>
+          <path d="M10 14 21 3"></path>
+          <path d="M21 14v7H3V3h7"></path>
         </svg>
-        Скин на ely.by
+        ely.by
       </a>` : '';
     const authorLink = (s.author && s.authorLink) ? `
-      <a href="${safe(s.authorLink)}" target="_blank" rel="noopener" class="skin-link" title="Профиль автора на ely.by">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <a href="${safe(s.authorLink)}" target="_blank" rel="noopener" class="skin-link"
+         title="Профиль автора на ely.by">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="8" r="4"></circle>
           <path d="M20 21a8 8 0 1 0-16 0"></path>
         </svg>
@@ -649,9 +636,9 @@
       </a>` : '';
 
     return `
-      <article class="skin-card" data-id="${safe(s.id)}" style="animation-delay:${Math.min(index * 40, 400)}ms">
+      <article class="skin-card" data-id="${safe(s.id)}">
         <div class="skin-card__preview">
-          <div class="skin-card__loading">Загрузка 3D…</div>
+          <div class="skin-card__loading">Загрузка…</div>
           <canvas data-skin-id="${safe(s.id)}" width="180" height="260"></canvas>
         </div>
         <div class="skin-card__body">
@@ -659,20 +646,22 @@
           ${desc}
           <div class="skin-card__links">${skinLink}${authorLink}</div>
           <div class="skin-card__actions">
-            <button class="skin-btn" data-skin-action="download" data-id="${safe(s.id)}" type="button">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <button class="btn" data-skin-action="download" data-id="${safe(s.id)}" type="button">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                 <polyline points="7 10 12 15 17 10"></polyline>
                 <line x1="12" y1="15" x2="12" y2="3"></line>
               </svg>
               Скачать
             </button>
-            <button class="skin-btn skin-btn--primary" data-skin-action="view" data-id="${safe(s.id)}" type="button">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <button class="btn btn--primary" data-skin-action="view" data-id="${safe(s.id)}" type="button">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
               </svg>
-              Открыть
+              3D
             </button>
           </div>
         </div>
@@ -680,10 +669,9 @@
     `;
   }
 
-  /* ---------------- 3D-превью скинов (ленивая инициализация) ---------------- */
+  /* ---------------- 3D-превью скинов ---------------- */
   function observeSkinCards() {
     if (!('IntersectionObserver' in window)) {
-      // Fallback — инициализируем всё сразу
       if (skinsGrid) {
         skinsGrid.querySelectorAll('canvas[data-skin-id]').forEach((c) => {
           const id = c.dataset.skinId;
@@ -714,7 +702,6 @@
   async function initSkinViewer(canvasEl, skin) {
     if (skinViewers.has(skin.id)) return;
 
-    // Ждём skinview3d, максимум 3 секунды
     const started = Date.now();
     while (!window.skinview3d && Date.now() - started < 3000) {
       await new Promise((r) => setTimeout(r, 100));
@@ -802,17 +789,14 @@
     skinModal.hidden = false;
     document.body.style.overflow = 'hidden';
 
-    // Уничтожаем предыдущий модальный viewer
     const modalKey = 'modal-' + skin.id;
     if (skinViewers.has(modalKey)) {
       try { skinViewers.get(modalKey).dispose(); } catch (e) {}
       skinViewers.delete(modalKey);
     }
 
-    // Пробуем создать 3D
     await new Promise((r) => setTimeout(r, 60));
 
-    // Размер под окно
     const stage = skinModalCanvas.parentNode;
     const maxW = Math.min(360, (stage ? stage.clientWidth : window.innerWidth) - 40);
     const maxH = Math.min(540, window.innerHeight - 260);
@@ -871,7 +855,7 @@
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     };
     img.onerror = () => {
-      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
       ctx.font = '14px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Не удалось загрузить', canvas.width / 2, canvas.height / 2);
@@ -925,7 +909,7 @@
     } catch (e) {
       console.warn('Download failed:', e);
       window.open(url, '_blank');
-      toast('Открыл в новой вкладке — сохрани через Ctrl+S');
+      toast('Открыто в новой вкладке');
     }
   }
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0a0915">
+<meta name="theme-color" content="#fef3c7">
 <meta name="description" content="Мой личный хаб веб-проектов и Minecraft-скинов">
 <title>Мои проекты</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -12,20 +12,38 @@
 </head>
 <body>
 
-<!-- Фон -->
-<div class="bg-grid" aria-hidden="true"></div>
-<div class="bg-orb bg-orb--1" aria-hidden="true"></div>
-<div class="bg-orb bg-orb--2" aria-hidden="true"></div>
-<div class="bg-orb bg-orb--3" aria-hidden="true"></div>
+<!-- ═══════════ SVG СПРАЙТ (иконки проектов) ═══════════ -->
+<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"
+     style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="g-lux7" viewBox="0 0 32 32">
+    <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2.5"/>
+    <circle cx="16" cy="16" r="9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 2.4"/>
+    <path d="M11 11 L21 11 L15 22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
 
-<!-- Шапка -->
+  <symbol id="g-arcanum" viewBox="0 0 32 32">
+    <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2.5"/>
+    <path d="M16 4.5 L19.8 12.8 L28 16 L19.8 19.2 L16 27.5 L12.2 19.2 L4 16 L12.2 12.8 Z"
+          fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+    <circle cx="16" cy="16" r="1.8" fill="currentColor"/>
+  </symbol>
+
+  <symbol id="g-orbis" viewBox="0 0 32 32">
+    <circle cx="16" cy="16" r="8" fill="none" stroke="currentColor" stroke-width="2.5"/>
+    <ellipse cx="16" cy="16" rx="14" ry="4.2" fill="none" stroke="currentColor" stroke-width="2"
+             transform="rotate(-25 16 16)"/>
+    <circle cx="16" cy="16" r="2.2" fill="currentColor"/>
+  </symbol>
+</svg>
+
+<!-- ═══════════ ШАПКА ═══════════ -->
 <header class="hub-header">
   <a class="brand" href="./" aria-label="На главную">
     <span class="brand__mark">✦</span>
     <span class="brand__name">Проекты</span>
   </a>
 
-  <nav class="hub-nav" aria-label="Фильтры">
+  <nav class="hub-nav" aria-label="Разделы">
     <button class="hub-nav__btn is-active" data-view="all">Все</button>
     <button class="hub-nav__btn" data-view="favorites">★ Избранное</button>
     <button class="hub-nav__btn" data-view="recent">🕒 Недавние</button>
@@ -33,20 +51,24 @@
   </nav>
 
   <div class="search">
-    <svg class="search__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path>
+    <svg class="search__icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+         aria-hidden="true">
+      <circle cx="11" cy="11" r="7"></circle>
+      <path d="m21 21-4.3-4.3"></path>
     </svg>
-    <input id="search-input" class="search__input" type="search" placeholder="Поиск проекта…" autocomplete="off" aria-label="Поиск проектов">
+    <input id="search-input" class="search__input" type="search"
+           placeholder="Поиск…" autocomplete="off" aria-label="Поиск">
     <kbd class="search__kbd">/</kbd>
   </div>
 </header>
 
-<!-- Hero: проекты -->
+<!-- ═══════════ HERO (проекты) ═══════════ -->
 <section class="hero" id="hero-default">
   <h1 class="hero__title">
-    <span class="hero__title-grad">Коллекция проектов</span>
+    <span class="hero__title-tag">Коллекция<br>проектов</span>
   </h1>
-  <p class="hero__subtitle">Все игры и эксперименты в одном месте. Кликни — запустится прямо здесь.</p>
+  <p class="hero__subtitle">Все игры и эксперименты в одном месте.</p>
 
   <div class="hero__stats" role="list">
     <div class="stat" role="listitem">
@@ -64,12 +86,12 @@
   </div>
 </section>
 
-<!-- Hero: скины -->
+<!-- ═══════════ HERO (скины) ═══════════ -->
 <section class="hero" id="hero-skins">
   <h1 class="hero__title">
-    <span class="hero__title-grad">Мои скины</span>
+    <span class="hero__title-tag">Мои<br>скины</span>
   </h1>
-  <p class="hero__subtitle">3D-просмотр, скачивание и ссылки на ely.by. Кликни на карточку — откроется большая модель.</p>
+  <p class="hero__subtitle">3D-просмотр, скачивание и ссылки на ely.by.</p>
 
   <div class="hero__stats" role="list">
     <div class="stat" role="listitem">
@@ -79,60 +101,50 @@
   </div>
 </section>
 
-<!-- Теги проектов -->
+<!-- ═══════════ ТЕГИ ПРОЕКТОВ ═══════════ -->
 <section class="tagbar" id="tagbar" aria-label="Фильтр по категории">
   <button class="tag-chip is-active" data-tag="all">Все</button>
 </section>
 
-<!-- Проекты -->
+<!-- ═══════════ ПРОЕКТЫ ═══════════ -->
 <main class="grid" id="grid" aria-live="polite"></main>
 
-<!-- Скины -->
+<!-- ═══════════ СКИНЫ ═══════════ -->
 <main class="skins-grid" id="skins-grid"></main>
 
-<!-- Пусто: проекты -->
+<!-- ═══════════ ПУСТО: ПРОЕКТЫ ═══════════ -->
 <div class="empty" id="empty" hidden>
   <div class="empty__icon">◌</div>
   <div class="empty__title">Ничего не найдено</div>
   <div class="empty__text" id="empty-text">Попробуй другой запрос или сними фильтр.</div>
 </div>
 
-<!-- Пусто: скины -->
+<!-- ═══════════ ПУСТО: СКИНЫ ═══════════ -->
 <div class="empty" id="skins-empty" hidden>
   <div class="empty__icon">🎨</div>
   <div class="empty__title">Пока нет скинов</div>
   <div class="empty__text">
     Добавь PNG в папку <code>skins/</code> и запиши его в <code>skins.json</code>.
-    <br><br>
-    <code style="display:inline-block;text-align:left;padding:8px 12px;background:rgba(255,255,255,0.05);border-radius:6px;font-size:11px;line-height:1.6">
-      {<br>
-      &nbsp;&nbsp;"skins": [{<br>
-      &nbsp;&nbsp;&nbsp;&nbsp;"id": "my-skin",<br>
-      &nbsp;&nbsp;&nbsp;&nbsp;"name": "Основной скин",<br>
-      &nbsp;&nbsp;&nbsp;&nbsp;"file": "skins/my-skin.png",<br>
-      &nbsp;&nbsp;&nbsp;&nbsp;"skinLink": "https://ely.by/skins/BebriK118",<br>
-      &nbsp;&nbsp;&nbsp;&nbsp;"author": "BebriK118",<br>
-      &nbsp;&nbsp;&nbsp;&nbsp;"authorLink": "https://ely.by/profile/BebriK118"<br>
-      &nbsp;&nbsp;}]<br>
-      }
-    </code>
   </div>
 </div>
 
-<!-- Ошибка загрузки projects.json -->
+<!-- ═══════════ ОШИБКА ═══════════ -->
 <div class="empty" id="load-error" hidden>
   <div class="empty__icon">⚠</div>
   <div class="empty__title">Не удалось загрузить projects.json</div>
   <div class="empty__text">Убедись, что файл лежит в корне и открыт через http-сервер, а не file://</div>
 </div>
 
+<!-- ═══════════ ФУТЕР ═══════════ -->
 <footer class="hub-footer">
   <span>© 2026 · Мой личный хаб</span>
   <span class="hub-footer__dot">·</span>
-  <button class="hub-footer__reset" id="reset-btn" type="button" title="Сбросить избранное и историю">сбросить данные</button>
+  <button class="hub-footer__reset" id="reset-btn" type="button" title="Сбросить избранное и историю">
+    сбросить данные
+  </button>
 </footer>
 
-<!-- Модалка проекта -->
+<!-- ═══════════ МОДАЛКА ПРОЕКТА ═══════════ -->
 <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
   <div class="modal__backdrop" data-close="1"></div>
   <div class="modal__panel">
@@ -143,14 +155,19 @@
       </div>
       <div class="modal__actions">
         <a class="btn btn--ghost" id="modal-external" href="#" target="_blank" rel="noopener">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M21 14v7H3V3h7"></path>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15 3h6v6"></path>
+            <path d="M10 14 21 3"></path>
+            <path d="M21 14v7H3V3h7"></path>
           </svg>
-          Новая вкладка
+          <span>Новая вкладка</span>
         </a>
         <button class="btn btn--ghost btn--icon" data-close="1" aria-label="Закрыть">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
           </svg>
         </button>
       </div>
@@ -163,8 +180,9 @@
   </div>
 </div>
 
-<!-- Модалка скина -->
-<div class="skin-modal" id="skin-modal" hidden role="dialog" aria-modal="true" aria-labelledby="skin-modal-title">
+<!-- ═══════════ МОДАЛКА СКИНА ═══════════ -->
+<div class="skin-modal" id="skin-modal" hidden role="dialog" aria-modal="true"
+     aria-labelledby="skin-modal-title">
   <div class="skin-modal__backdrop" data-skin-close="1"></div>
   <div class="skin-modal__panel">
     <div class="skin-modal__header">
@@ -176,8 +194,9 @@
     </div>
     <div class="skin-modal__info" id="skin-modal-info"></div>
     <div class="skin-modal__actions">
-      <button class="skin-btn skin-btn--primary" id="skin-modal-download" type="button">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <button class="btn btn--primary" id="skin-modal-download" type="button">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
           <polyline points="7 10 12 15 17 10"></polyline>
           <line x1="12" y1="15" x2="12" y2="3"></line>
@@ -188,7 +207,7 @@
   </div>
 </div>
 
-<!-- Toast -->
+<!-- ═══════════ TOAST ═══════════ -->
 <div class="toast" id="toast" hidden></div>
 
 <script src="hub.js"></script>

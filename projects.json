@@ -6,6 +6,8 @@
       "desc": "Рогалик-казино: 10 этажей, боссы, 6 игр, классы, перки, проклятия, магазин и инвентарь.",
       "path": "projects/lux-7/",
       "icon": "🎰",
+      "iconSvg": "g-lux7",
+      "color": "yellow",
       "tags": ["roguelike", "casino", "pwa"],
       "accent": "#d9a441",
       "added": "2026-10-17"
@@ -16,6 +18,8 @@
       "desc": "Волновой рогалик-шутер: последний маг академии против волн тьмы. Самонаводящиеся фаерболы, ледяные новы, цепи молний.",
       "path": "projects/arcanum/",
       "icon": "✦",
+      "iconSvg": "g-arcanum",
+      "color": "purple",
       "tags": ["roguelike", "shooter", "magic"],
       "accent": "#b56bff",
       "added": "2026-10-17"
@@ -26,6 +30,8 @@
       "desc": "Гравитационная песочница: тела, орбиты, столкновения, фигура-8 трёх тел.",
       "path": "projects/orbis/",
       "icon": "🪐",
+      "iconSvg": "g-orbis",
+      "color": "blue",
       "tags": ["sandbox", "physics", "simulation"],
       "accent": "#60a5fa",
       "added": "2026-10-17"
